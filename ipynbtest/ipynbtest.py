@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! python
 """
 Simple example script for running and testing IPython notebooks.
 
