@@ -3,8 +3,9 @@
 Simple example script for running and testing IPython notebooks.
 
 usage: ipynbtest.py [-h] [--timeout TIMEOUT] [--rerun-if-timeout [RERUN]]
-                    [--restart-if-fail [RESTART]] [--strict]
-                    [--pass-if-timeout] [--show-diff] [--verbose]
+                    [--restart-if-fail [RESTART]] [--strict] [--eval [EVAL]]
+                    [--pass-if-timeout] [--show-diff] [--abort-if-fail]
+                    [--verbose]
                     file.ipynb
 
 Run all cells in an ipython notebook as a test and check whether these
@@ -32,10 +33,14 @@ optional arguments:
   --strict              if set to true then the default test is that cell have
                         to match otherwise a diff will not be considered a
                         failed test
+  --eval [EVAL]         the argument will be run before the first cell is
+                        executed. This can be used to set specific values
+                        without changing the notebook.
   --pass-if-timeout     if set then a timeout (after last retry) is considered
                         a passed test
   --show-diff           if set to true differences in the cell are shown in
                         `diff` style
+  --abort-if-fail       if set to true then a fail will stop the whole test.
   --verbose             if set then text output is send to the console.
 
 
@@ -47,11 +52,15 @@ handle notebooks of version 3 (IPython 2) and version 4 (IPython 3).
 
 CHANGELOG
 ---------
-Oct-05 2014:
+Oct-05 2015:
 - Added support for IPython 4.0.0 / Jupyter. This had some extensive
   packages renamed but should work now.
 - Reduced the latency for cell to 0.05 seconds. This should be enough on a
   local machine to get the result.
+
+Nov-09 2015:
+- Added support for --abort-if-fail and --eval [pythoncommand]
+- Moved to separate installable package
 
 The original is found in a gist under https://gist.github.com/minrk/2620735
 """
@@ -62,6 +71,7 @@ import re
 import argparse
 import uuid
 import difflib
+import shlex
 
 from Queue import Empty
 
@@ -94,6 +104,9 @@ class TravisConsole(object):
         # very complicated, maybe too? complicated
         self.fold_uuid = str(uuid.uuid4()).split('-')[1]
 
+        # check, if we are on travis-ci
+        self.travis = os.getenv('TRAVIS', False)
+
     def fold_open(self, name):
         """
         open the travis fold with given name
@@ -112,7 +125,8 @@ class TravisConsole(object):
 
         self.fold_stack[name].append(fold_name)
 
-        self.writeln("travis_fold:start:" + fold_name)
+        if self.travis:
+            self.writeln("travis_fold:start:" + fold_name)
 
     def fold_close(self, name):
         """
@@ -124,7 +138,9 @@ class TravisConsole(object):
             the name of the fold
         """
         fold_name = self.fold_uuid + '.' + name.lower() + '.' + str(self.fold_count[name])
-        self.writeln("travis_fold:end:" + fold_name)
+
+        if self.travis:
+            self.writeln("travis_fold:end:" + fold_name)
 
     @staticmethod
     def _indent(s, num = 4):
@@ -577,9 +593,8 @@ class IPyKernel(object):
 
         if a code cell starts with the hashbang `#!` it can be followed by
         a comma separated list of commands. Each command can be
-        a single key `skip`
-        or
-        a key/value pair separated by a colon `timeout:[int]`
+        1. a single key `skip`, or
+        2. a key/value pair separated by a colon `timeout:[int]`
 
         Parameters
         ----------
@@ -596,9 +611,10 @@ class IPyKernel(object):
         if source is not None:
             lines = source.splitlines()
             if len(lines) > 0:
-                first_line = lines[0]
-                if first_line.startswith('#!'):
-                    txt = first_line[2:].strip()
+                n_line = 0
+                line = lines[n_line].strip()
+                while line.startswith('#!') or len(line) == 0:
+                    txt = line[2:].strip()
 
                     parts = txt.split(',')
                     for part in parts:
@@ -607,6 +623,9 @@ class IPyKernel(object):
                             commands[subparts[0].strip().lower()] = True
                         elif len(subparts) == 2:
                             commands[subparts[0].strip().lower()] = subparts[1]
+
+                    n_line += 1
+                    line = lines[n_line]
 
         return commands
 
@@ -652,10 +671,8 @@ class IPyKernel(object):
             True if the cell has no code, False otherwise
         """
         source = self.get_source(cell)
-        if source is None or source == '':
-            return True
-        else:
-            return False
+
+        return source is None or source == ''
 
 
 # ===============================================================================
@@ -723,6 +740,12 @@ if __name__ == '__main__':
                'in `diff` style')
 
     parser.add_argument(
+        '--abort-if-fail',
+        dest = 'abort_fail', action = 'store_true',
+        default = False,
+        help = 'if set to true then a fail will stop the whole test.')
+
+    parser.add_argument(
         '--verbose',
         dest = 'verbose', action = 'store_true',
         default = False,
@@ -741,8 +764,8 @@ if __name__ == '__main__':
     if args.no_timeout:
         tv.default_results['timeout'] = True
 
-    tv.writeln('testing ipython notebook : "%s"' % ipynb)
     tv.fold_open('ipynb')
+    tv.writeln('testing ipython notebook : "%s"' % ipynb)
 
     timeout_rerun = args.rerun
     fail_restart = args.restart
@@ -812,7 +835,7 @@ if __name__ == '__main__':
                     tv.write(nb_class_name + '.' + 'In [%3i]' %
                             cell.execution_count + ' ... ')
                 else:
-                    tv.write(nb_class_name + '.' + 'In [???]' + ' ... ')
+                    tv.write(nb_class_name + '.' + 'In [---]' + ' ... ')
 
                 commands = ipy.get_commands(cell)
 
@@ -883,7 +906,10 @@ if __name__ == '__main__':
                     if tv.last_fail and notebook_run_count <= fail_restart:
                         notebook_restart = True
 
-                    continue
+                    if args.abort_fail:
+                        break
+                    else:
+                        continue
 
                 failed = False
                 diff = False
@@ -956,6 +982,11 @@ if __name__ == '__main__':
                     tv.fold_open('ipynb.out')
                     tv.writeln(out_str)
                     tv.fold_close('ipynb.out')
+
+                if args.abort_fail and tv.last_fail:
+                    # a fail should stop the tests (but allow retries)
+                    tv.writeln(tv.blue('aborting tests!'))
+                    break
 
             tv.br()
             tv.writeln("  testing results")
