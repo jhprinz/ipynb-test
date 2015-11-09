@@ -100,7 +100,7 @@ def buildKeywordDictionary():
     setupKeywords["package_dir"]       = {
         'ipynbtest' : 'ipynbtest',
     }
-    setupKeywords["scripts"]           = ['ipynbtest']
+    setupKeywords["scripts"]           = ['ipynbtest/ipynbtest.py']
     setupKeywords["data_files"]        = []
     setupKeywords["ext_modules"]       = []
     setupKeywords["platforms"]         = ["Linux", "Mac OS X", "Windows"]
