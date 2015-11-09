@@ -12,7 +12,7 @@ conda install --yes binstar
 
 if [[ "2.7" =~ "$python" ]]; then
     conda convert -p all ~/miniconda2/conda-bld/linux-64/ipynbtest*.tar.bz2 -o ~/miniconda2/conda-bld/
-    binstar upload  -t ${BINSTAR_TOKEN} --u omnia --force -p ipynbtest $HOME/miniconda2/conda-bld/*/ipynbtest*.tar.bz2
+    anaconda -t ${BINSTAR_TOKEN} upload --force -p ipynbtest $HOME/miniconda2/conda-bld/*/ipynbtest*.tar.bz2
 fi
 
 if [[ "$python" != "2.7" ]]; then
