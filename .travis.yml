@@ -21,8 +21,11 @@ script:
   - conda install --yes conda-build jinja2
   - conda build devtools/conda-recipe
   - source activate $python
-  - conda install --yes $HOME/miniconda2/conda-bld/linux-64/ipynbtest-*
+  - conda install --yes $HOME/miniconda2/conda-bld/linux-64/openpathsampling-*
   - conda list -e
+
+  # Run tests
+  - ipynbtest.py --eval "denom=0" --timeout 2 --fail-if-timeout --restart-if-fail 1 ipynbtest.py
 
   # Push to binstar anyway.
   - bash -x devtools/ci/after_sucess.sh
