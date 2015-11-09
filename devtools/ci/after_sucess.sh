@@ -10,6 +10,8 @@ fi
 
 conda install --yes anaconda-client
 
+echo $python
+
 if [[ "2.7" =~ "$python" ]]; then
     conda convert -p all ~/miniconda2/conda-bld/linux-64/ipynbtest*.tar.bz2 -o ~/miniconda2/conda-bld/
     anaconda -t ${BINSTAR_TOKEN}  upload  --force  --user omnia  --package ipynbtest  $HOME/miniconda2/conda-bld/*/ipynbtest*.tar.bz2
