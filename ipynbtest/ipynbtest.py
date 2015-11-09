@@ -71,7 +71,6 @@ import re
 import argparse
 import uuid
 import difflib
-import shlex
 
 from Queue import Empty
 
