@@ -25,7 +25,7 @@ script:
   - conda list -e
 
   # Run tests
-  - ipynbtest.py --eval "denom=0" --timeout 2 --restart-if-fail 1 ipynbtest.py
+  - ipynbtest.py --eval "denom=0" --timeout 2 --restart-if-fail 1 exmamples/ipynbtest_tutorial.ipynb
 
   # Push to binstar anyway.
   - bash -x devtools/ci/after_sucess.sh
