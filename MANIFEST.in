@@ -1,0 +1,2 @@
+graft openpathsampling
+recursive-include openpathsampling *.py
