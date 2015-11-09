@@ -8,11 +8,11 @@ echo $TRAVIS_PULL_REQUEST $TRAVIS_BRANCH
 #    echo "No deployment on BRANCH='$TRAVIS_BRANCH'"; exit 0
 #fi
 
-conda install --yes anaconda-client
+conda install --yes binstar
 
 if [[ "2.7" =~ "$python" ]]; then
     conda convert -p all ~/miniconda2/conda-bld/linux-64/ipynbtest*.tar.bz2 -o ~/miniconda2/conda-bld/
-    anaconda upload  -t ${BINSTAR_TOKEN} --force -p ipynbtest $HOME/miniconda2/conda-bld/*/ipynbtest*.tar.bz2
+    binstar upload  -t ${BINSTAR_TOKEN} --u omnia --force -p ipynbtest $HOME/miniconda2/conda-bld/*/ipynbtest*.tar.bz2
 fi
 
 if [[ "$python" != "2.7" ]]; then
