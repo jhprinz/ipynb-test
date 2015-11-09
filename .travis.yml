@@ -1,0 +1,42 @@
+language: python
+
+python:
+  # We don't actually use the Travis Python, but this keeps it organized.
+  - "2.7"
+
+install:
+  - deactivate
+  # Sets up a MINIConda enviroment in the name of the selected python version
+  - source devtools/ci/install.sh
+  # Don't know what this is meant for
+  - export PYTHONUNBUFFERED=true
+  # Try to install our package
+  - ls
+  - pwd
+  - python setup.py install
+
+script:
+  # Build conda package
+  - source deactivate
+  - conda install --yes conda-build jinja2
+  - conda build devtools/conda-recipe
+  - source activate $python
+  - conda install --yes $HOME/miniconda2/conda-bld/linux-64/ipynbtest-*
+  - conda list -e
+
+  # Push to binstar anyway.
+  - bash -x devtools/ci/after_sucess.sh
+
+env:
+  matrix:
+# - python=2.6  CONDA_PY=26  CONDA_NPY=16
+# is 110 the correct numpy label? doesn't seem to cause problems....
+    - python=2.7  CONDA_PY=27  CONDA_NPY=110
+# - python=3.3  CONDA_PY=33  CONDA_NPY=17
+# - python=3.4  CONDA_PY=34  CONDA_NPY=18
+
+  global:
+    # encrypted BINSTAR_TOKEN for push of dev package to binstar
+    - secure: "Ou9KukGxCOdNWvEpr+9YrWTlB0xezu1mNV1gXtFjJ0RDIvzPRGUkpU7AUAdKwn6fUcbzq5E1y6rU9aG/QQe9YZkRHhPo585ZzieTNa0UxsyINk7XuwxL7MpRZijHCHFBvRVNrXkIh3CtmXvZS2ksAa8+FuYiO/lBbOMZ0nNAJac="
+    - secure: "NJvoSrLNd2ZR3HluJjEqI36gD5lsucwIvgnYjNmM4cwnnA77aLV9FRYTwlLRZn3XY9FL8KOzL5l0amNzMD7sQrf7bWwWv7iCUBddH549q9RSgiuOugtodYJ6VaXi76hk1rOgcJpDoCj9wTCIlMtWibPUzr1QHmdihfdM2iA2kkE="
+    - secure: "l9NJkZDD0ALhkErUvhRrreLsrcWErd+CXpWv8dxHGtkjemNx6CwVtyL+a30jz/QwMANSZbKll/cPK5yJQvuwDaWxja6UPLLKVNGtma+CmwKcIC/wwTwbMoxcS62fyLJ3kS0qR8oCQz2nCPKiYyRGADtPLWVMZckY1SJfNYcKuCM="
