@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#! python
 """
 Simple example script for running and testing IPython notebooks.
 
@@ -71,7 +71,6 @@ import re
 import argparse
 import uuid
 import difflib
-import shlex
 
 from Queue import Empty
 

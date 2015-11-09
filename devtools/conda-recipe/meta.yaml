@@ -1,5 +1,5 @@
 package:
-  name: ipynbtest-dev
+  name: ipynbtest
   version: !!str 0.1.0
 
 build:
@@ -20,5 +20,5 @@ requirements:
     - jinja2
 
 about:
-  home: https://github.com/choderalab/openpathsampling
+  home: https://github.com/jhprinz/ipynb-test
   license: GNU Lesser General Public License v2 or later (LGPLv2+)
