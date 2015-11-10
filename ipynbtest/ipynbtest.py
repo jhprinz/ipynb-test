@@ -71,6 +71,7 @@ import re
 import argparse
 import uuid
 import difflib
+import time
 
 from Queue import Empty
 
@@ -679,6 +680,7 @@ class IPyKernel(object):
 # ===============================================================================
 
 if __name__ == '__main__':
+    total_start_time = time.time()
     parser = argparse.ArgumentParser(
         description = 'Run all cells in an ipython notebook as a test and ' +
                       'check whether these successfully execute and ' +
@@ -988,8 +990,9 @@ if __name__ == '__main__':
                     break
 
             tv.br()
-            tv.writeln("  testing results")
-            tv.writeln("  ===============")
+            total_run_time = time.time() - total_start_time
+            tv.writeln("  testing results (%5.3f seconds)" % total_run_time)
+            tv.writeln("  ================================")
             if tv.pass_count > 0:
                 tv.writeln("    %3i cells passed [" %
                            tv.pass_count + tv.green('ok') + "]")
