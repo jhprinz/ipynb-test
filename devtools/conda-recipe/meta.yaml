@@ -3,7 +3,12 @@ package:
   version: "0.1.1"
 
 build:
+  preserve_egg_dir: True
   number: 0
+
+source:
+  path: ../../
+#  git_url: ../../.git
 
 requirements:
   build:
@@ -14,12 +19,13 @@ requirements:
 
   run:
     - python
+    - jupyter
     - jupyter_client
     - nbformat
 
 test:
   files:
-    - examples/ipynbtest_tutorial.py
+    - ../../examples/ipynbtest_tutorial.ipynb
 
 about:
   home: https://github.com/jhprinz/ipynb-test

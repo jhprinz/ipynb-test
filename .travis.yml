@@ -10,19 +10,11 @@ install:
   - source devtools/ci/install.sh
   # Don't know what this is meant for
   - export PYTHONUNBUFFERED=true
-  # Try to install our package
-  - ls
-  - pwd
-  - python setup.py install
 
 script:
   # Build conda package
-  - source deactivate
-  - conda install --yes conda-build jinja2
+  - conda install --yes conda-build
   - conda build devtools/conda-recipe
-  - source activate $python
-  - conda install --yes $HOME/miniconda2/conda-bld/linux-64/ipynbtest-*
-  - conda list -e
 
   # Run tests
   - ipynbtest.py --eval "denom=0" --timeout 2 --restart-if-fail 1 examples/ipynbtest_tutorial.ipynb

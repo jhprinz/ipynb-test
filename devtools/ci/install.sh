@@ -20,16 +20,6 @@ bash $MINICONDA -b
 
 export PATH=$HOME/miniconda2/bin:$PATH
 
-hash -r
-
 conda config --add channels http://conda.anaconda.org/omnia
-conda create --yes -n ${python} python=${python} --file devtools/ci/requirements-conda-${python}.txt
 conda update --yes conda
 source activate $python
-
-# Useful for debugging any issues with conda
-# conda info -a
-
-# install python pip packages
-PIP_ARGS="-U"
-$HOME/miniconda2/envs/${python}/bin/pip install $PIP_ARGS -r devtools/ci/requirements-${python}.txt
