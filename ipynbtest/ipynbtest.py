@@ -62,6 +62,11 @@ Nov-09 2015:
 - Added support for --abort-if-fail and --eval [pythoncommand]
 - Moved to separate installable package
 
+May-17 2016:
+- Fix creating of stdout cell. Depending on cache flushing multiple output cell coult have been
+  generated during running while store files contain only one. These will be combined now into one
+- Add check for `idle` status to figure out if cell execution is finished. This is much faster
+
 The original is found in a gist under https://gist.github.com/minrk/2620735
 """
 
@@ -80,14 +85,15 @@ try:
     from jupyter_client.manager import KernelManager
     import nbformat
 
-#    print 'Found Jupyter / IPython 4+'
+# print 'Found Jupyter / IPython 4+'
 
 except ImportError:
     # IPython 3.0.0+
     from IPython.kernel.manager import KernelManager
     import IPython.nbformat as nbformat
 
-#    print 'Using IPython 3+'
+
+# print 'Using IPython 3+'
 
 
 class TravisConsole(object):
@@ -143,12 +149,12 @@ class TravisConsole(object):
             self.writeln("travis_fold:end:" + fold_name)
 
     @staticmethod
-    def _indent(s, num = 4):
+    def _indent(s, num=4):
         lines = s.splitlines(True)
         lines = map(lambda s: ' ' * num + s, lines)
         return ''.join(lines)
 
-    def writeln(self, s, indent = 0):
+    def writeln(self, s, indent=0):
         """write a string with linebreak at the end
 
         Parameters
@@ -169,7 +175,7 @@ class TravisConsole(object):
         """
         self.stream.write(self.linebreak)
 
-    def write(self, s, indent = 0):
+    def write(self, s, indent=0):
         """write a string to travis output with possible indention
 
         Parameters
@@ -248,7 +254,7 @@ class TravisConsole(object):
 
         Parameters
         ----------
-        diff : list of diff (string)
+        difference : list of diff (string)
             the list of diff commands to be formatted
 
         Returns
@@ -300,11 +306,11 @@ class IPyTestConsole(TravisConsole):
         self.reset()
 
     def reset(self):
-        self.result_count = { key: 0 for key in self.default_results.keys() }
+        self.result_count = {key: 0 for key in self.default_results.keys()}
         self.pass_count = 0
         self.fail_count = 0
 
-    def write_result(self, result, okay_list = None):
+    def write_result(self, result, okay_list=None):
         """write final result of test
 
         this keeps track of the result types
@@ -337,7 +343,7 @@ class IPyKernel(object):
 
     """
 
-    def __init__(self, nb_version = 4):
+    def __init__(self, nb_version=4):
         # default timeout time is 60 seconds
         self.default_timeout = 60
         self.extra_arguments = ['--pylab=inline']
@@ -346,8 +352,8 @@ class IPyKernel(object):
     def __enter__(self):
         self.km = KernelManager()
         self.km.start_kernel(
-            extra_arguments = self.extra_arguments,
-            stderr = open(os.devnull, 'w')
+            extra_arguments=self.extra_arguments,
+            stderr=open(os.devnull, 'w')
         )
 
         self.kc = self.km.client()
@@ -363,7 +369,7 @@ class IPyKernel(object):
         self.shell.get_msg()
         while True:
             try:
-                self.iopub.get_msg(timeout = 0.05)
+                self.iopub.get_msg(timeout=0.05)
             except Empty:
                 break
 
@@ -371,21 +377,20 @@ class IPyKernel(object):
 
     def execute(self, source):
         self.kc.execute(source + '\n')
-        self.shell.get_msg(timeout = 0.05)
+        self.shell.get_msg(timeout=0.05)
 
         while True:
             try:
-                msg = self.iopub.get_msg(timeout = 0.05)
+                msg = self.iopub.get_msg(timeout=0.05)
             except Empty:
                 break
-
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.kc.stop_channels()
         self.km.shutdown_kernel()
         del self.km
 
-    def run(self, cell, timeout = None):
+    def run(self, cell, timeout=None):
         """
         Run a notebook cell in the IPythonKernel
 
@@ -417,27 +422,43 @@ class IPyKernel(object):
         else:
             raise AttributeError('No source/input key')
 
-        self.shell.get_msg(timeout = use_timeout)
+        self.shell.get_msg(timeout=use_timeout)
+
         outs = []
+        stdout_cells = {}
 
         while True:
             try:
-                msg = self.iopub.get_msg(timeout = 0.05)
+                msg = self.iopub.get_msg(timeout=1.00)
             except Empty:
                 break
             msg_type = msg['msg_type']
-            if msg_type in ('status', 'pyin', 'execute_input'):
+            if msg_type in ('pyin', 'execute_input'):
                 continue
             elif msg_type == 'clear_output':
                 outs = []
                 continue
+            elif msg_type == 'status':
+                if msg['content']['execution_state'] == 'idle':
+                    # we are done with the cell, let's compare
+                    break
+
+                continue
 
             content = msg['content']
-            out = nbformat.NotebookNode(output_type = msg_type)
+            out = nbformat.NotebookNode(output_type=msg_type)
 
             if msg_type == 'stream':
-                out.name = content['name']
-                out.text = content['text']
+                name = content['name']
+                if name not in stdout_cells:
+                    out.name = name
+                    out.text = content['text']
+                    stdout_cells[name] = out
+                    outs.append(out)
+                else:
+                    # we already have a stdout cell, so append to it
+                    stdout_cells[name].text += content['text']
+
             elif msg_type in ('display_data', 'pyout', 'execute_result'):
                 if hasattr(content, 'execution_count'):
                     out['execution_count'] = content['execution_count']
@@ -446,10 +467,14 @@ class IPyKernel(object):
                 out['data'] = content['data']
                 out['metadata'] = content['metadata']
 
+                outs.append(out)
+
             elif msg_type == 'error':
                 out.ename = content['ename']
                 out.evalue = content['evalue']
                 out.traceback = content['traceback']
+
+                outs.append(out)
 
             elif msg_type.startswith('comm_'):
                 # messages used to initialize, close and unpdate widgets
@@ -459,8 +484,6 @@ class IPyKernel(object):
             else:
                 print "unhandled iopub msg:", msg_type
 
-            outs.append(out)
-
         return outs
 
     @staticmethod
@@ -469,6 +492,11 @@ class IPyKernel(object):
 
         fix universal newlines, strip trailing newlines, and normalize likely
         random values (memory addresses and UUIDs)
+
+        Parameters
+        ----------
+        s : str
+            string to be sanitized, i.e. remove UUIDs, Hex-addresses, unnecessary newlines
         """
         if not isinstance(s, basestring):
             return s
@@ -492,7 +520,7 @@ class IPyKernel(object):
             self,
             test,
             ref,
-            skip_compare = ('traceback', 'latex', 'execution_count')
+            skip_compare=('traceback', 'latex', 'execution_count')
     ):
         """
         Compare two lists of `NotebookNode`s
@@ -516,7 +544,7 @@ class IPyKernel(object):
         diff = False
         diff_list = []
 
-#        print ref.keys(), test.keys()
+        #        print ref.keys(), test.keys()
 
         if self.nb_version == 4:
             for key in ref:
@@ -606,7 +634,7 @@ class IPyKernel(object):
         dict
             a dict of key/value pairs. For a single command the value is `True`
         """
-        commands = { }
+        commands = {}
         source = self.get_source(cell)
         if source is not None:
             lines = source.splitlines()
@@ -682,76 +710,75 @@ class IPyKernel(object):
 if __name__ == '__main__':
     total_start_time = time.time()
     parser = argparse.ArgumentParser(
-        description = 'Run all cells in an ipython notebook as a test and ' +
-                      'check whether these successfully execute and ' +
-                      'compares their output to the one inside the notebook')
+        description='Run all cells in an ipython notebook as a test and ' +
+                    'check whether these successfully execute and ' +
+                    'compares their output to the one inside the notebook')
 
     parser.add_argument(
         'file',
-        metavar = 'file.ipynb',
-        help = 'the notebook to be checked',
-        type = str)
+        metavar='file.ipynb',
+        help='the notebook to be checked',
+        type=str)
 
-    parser.add_argument('--timeout', dest = 'timeout',
-                        type = int, default = 300,
-                        help = 'the default timeout time in seconds for a cell ' +
-                               'evaluation. Default is 300s (5mins). Note that travis ' +
-                               'will consider it an error by default if after 600s (10mins) ' +
-                               'no output is generated. So 600s is the default limit by travis. '
-                               'However, a test cell that takes this long should be split in ' +
-                               'more than one or simplified.')
+    parser.add_argument('--timeout', dest='timeout',
+                        type=int, default=300,
+                        help='the default timeout time in seconds for a cell ' +
+                             'evaluation. Default is 300s (5mins). Note that travis ' +
+                             'will consider it an error by default if after 600s (10mins) ' +
+                             'no output is generated. So 600s is the default limit by travis. '
+                             'However, a test cell that takes this long should be split in ' +
+                             'more than one or simplified.')
 
-    parser.add_argument('--rerun-if-timeout', dest = 'rerun',
-                        type = int, default = 2, nargs = '?',
-                        help = 'if set then a timeout in a cell will cause to run ' +
-                               'the. Default is 2 (means make up to 3 attempts)')
+    parser.add_argument('--rerun-if-timeout', dest='rerun',
+                        type=int, default=2, nargs='?',
+                        help='if set then a timeout in a cell will cause to run ' +
+                             'the. Default is 2 (means make up to 3 attempts)')
 
-    parser.add_argument('--restart-if-fail', dest = 'restart',
-                        type = int, default = 0, nargs = '?',
-                        help = 'if set then a fail in a cell will cause to restart ' +
-                               'the full notebook!. Default is 0 (means NO rerun).' +
-                               'Use this with care.')
+    parser.add_argument('--restart-if-fail', dest='restart',
+                        type=int, default=0, nargs='?',
+                        help='if set then a fail in a cell will cause to restart ' +
+                             'the full notebook!. Default is 0 (means NO rerun).' +
+                             'Use this with care.')
 
-    parser.add_argument('--strict', dest = 'strict',
-                        action = 'store_true',
-                        default = False,
-                        help = 'if set to true then the default test is that cell ' +
-                               'have to match otherwise a diff will not be ' +
-                               'considered a failed test')
+    parser.add_argument('--strict', dest='strict',
+                        action='store_true',
+                        default=False,
+                        help='if set to true then the default test is that cell ' +
+                             'have to match otherwise a diff will not be ' +
+                             'considered a failed test')
 
-    parser.add_argument('--eval', dest = 'eval',
-                        type = str, default = '', nargs = '?',
-                        help = 'the argument will be run before the first cell is executed. ' +
-                               'This can be used to set specific values without changing the notebook.')
-
+    parser.add_argument('--eval', dest='eval',
+                        type=str, default='', nargs='?',
+                        help='the argument will be run before the first cell is executed. ' +
+                             'This can be used to set specific values without changing the notebook.')
 
     parser.add_argument(
         '--pass-if-timeout',
-        dest = 'no_timeout', action = 'store_true',
-        default = False,
-        help = 'if set then a timeout (after last retry) is considered a ' +
-               'passed test')
+        dest='no_timeout', action='store_true',
+        default=False,
+        help='if set then a timeout (after last retry) is considered a ' +
+             'passed test')
 
     parser.add_argument(
         '--show-diff',
-        dest = 'show_diff',
-        action = 'store_true',
-        default = False,
-        help = 'if set to true differences in the cell are shown ' +
-               'in `diff` style')
+        dest='show_diff',
+        action='store_true',
+        default=False,
+        help='if set to true differences in the cell are shown ' +
+             'in `diff` style')
 
     parser.add_argument(
         '--abort-if-fail',
-        dest = 'abort_fail', action = 'store_true',
-        default = False,
-        help = 'if set to true then a fail will stop the whole test.')
+        dest='abort_fail', action='store_true',
+        default=False,
+        help='if set to true then a fail will stop the whole test.')
 
     parser.add_argument(
         '--verbose',
-        dest = 'verbose', action = 'store_true',
-        default = False,
-        help = 'if set then text output is send to the ' +
-               'console.')
+        dest='verbose', action='store_true',
+        default=False,
+        help='if set then text output is send to the ' +
+             'console.')
 
     args = parser.parse_args()
     ipynb = args.file
@@ -830,11 +857,11 @@ if __name__ == '__main__':
 
                 if hasattr(cell, 'prompt_number'):
                     tv.write(nb_class_name + '.' + 'In [%3i]' %
-                            cell.prompt_number + ' ... ')
+                             cell.prompt_number + ' ... ')
                 elif hasattr(cell, 'execution_count') and \
-                            cell.execution_count is not None:
+                                cell.execution_count is not None:
                     tv.write(nb_class_name + '.' + 'In [%3i]' %
-                            cell.execution_count + ' ... ')
+                             cell.execution_count + ' ... ')
                 else:
                     tv.write(nb_class_name + '.' + 'In [---]' + ' ... ')
 
@@ -861,7 +888,7 @@ if __name__ == '__main__':
 
                     try:
                         if 'timeout' in commands:
-                            outs = ipy.run(cell, timeout = int(commands['timeout']))
+                            outs = ipy.run(cell, timeout=int(commands['timeout']))
                         else:
                             outs = ipy.run(cell)
 
@@ -877,9 +904,9 @@ if __name__ == '__main__':
                                     tv.write('timeout [retry #%d] ' % cell_run_count)
                                 else:
                                     if 'pass-if-timeout' in commands:
-                                        tv.write_result('timeout', okay_list = {'timeout': True})
+                                        tv.write_result('timeout', okay_list={'timeout': True})
                                     elif 'fail-if-timeout' in commands:
-                                        tv.write_result('timeout', okay_list = {'timeout': False})
+                                        tv.write_result('timeout', okay_list={'timeout': False})
                                     else:
                                         tv.write_result('timeout')
 
@@ -888,7 +915,7 @@ if __name__ == '__main__':
                                 tv.write_result('kernel')
                                 tv.fold_open('ipynb.kernel')
                                 tv.writeln('>>> ' + out.ename + ' ("' + out.evalue + '")')
-                                tv.writeln(repr(e), indent = 4)
+                                tv.writeln(repr(e), indent=4)
                                 tv.fold_close('ipynb.kernel')
                         else:
                             if repr(e) == 'Empty()':
@@ -900,7 +927,7 @@ if __name__ == '__main__':
                                 tv.write_result('ignore')
                                 tv.fold_open('ipynb.kernel')
                                 tv.writeln('>>> ' + out.ename + ' ("' + out.evalue + '")')
-                                tv.writeln(repr(e), indent = 4)
+                                tv.writeln(repr(e), indent=4)
                                 tv.fold_close('ipynb.kernel')
 
                 if not cell_passed:
@@ -929,14 +956,23 @@ if __name__ == '__main__':
                         tv.writeln('>>> ' + out.ename + ' ("' + out.evalue + '")')
 
                         for idx, trace in enumerate(out.traceback[1:]):
-                            tv.writeln(trace, indent = 4)
+                            tv.writeln(trace, indent=4)
 
                         tv.fold_close('ipynb.error')
                         failed = True
 
                 if not failed:
                     if len(outs) != len(cell.outputs):
-                        diff_str += tv.blue(">>> diff in number of output parts %d vs %d\n") % (len(outs), len(cell.outputs))
+                        diff_str += tv.blue(">>> diff in number of output parts %d vs %d\n") % (
+                        len(outs), len(cell.outputs))
+                        for no, out in enumerate(outs):
+                            diff_str += tv.blue(">>> %d vs %s\n") % (no, out.output_type)
+                            diff_str += tv.blue(">>> %s\n") % str(out)
+
+                        for no, out in enumerate(cell.outputs):
+                            diff_str += tv.blue(">>> %d vs %s\n") % (no, out.output_type)
+                            diff_str += tv.blue(">>> %s\n") % str(out)
+
                         diff = True
                     else:
                         for out, ref in zip(outs, cell.outputs):
@@ -956,10 +992,10 @@ if __name__ == '__main__':
                     if 'ignore' not in commands:
                         if 'strict' in commands:
                             # strict mode means a difference will fail the test
-                            tv.write_result('diff', okay_list = {'diff': False})
+                            tv.write_result('diff', okay_list={'diff': False})
                         elif 'lazy' in commands:
                             # lazy mode means a difference will pass the test
-                            tv.write_result('diff', okay_list = {'diff': True})
+                            tv.write_result('diff', okay_list={'diff': True})
                         else:
                             # use defaults
                             tv.write_result('diff')
