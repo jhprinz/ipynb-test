@@ -1,17 +1,22 @@
 # ipynb-test
+
 A simple tool for testing ipython notebooks (.ipynb) files
 
 ### Usage output
+
 To get the help use
+
 ```
 python ipynbtest.py -h
 ```
+
 which outputs
+
 ```
 usage: ipynbtest.py [-h] [--timeout TIMEOUT] [--rerun-if-timeout [RERUN]]
                     [--restart-if-fail [RESTART]] [--strict] [--eval [EVAL]]
                     [--pass-if-timeout] [--show-diff] [--abort-if-fail]
-                    [--verbose]
+                    [--extra-arguments [EXTRA_ARGUMENTS]] [--verbose]
                     file.ipynb
 
 Run all cells in an ipython notebook as a test and check whether these
@@ -47,7 +52,11 @@ optional arguments:
   --show-diff           if set to true differences in the cell are shown in
                         `diff` style
   --abort-if-fail       if set to true then a fail will stop the whole test.
+  --extra-arguments [EXTRA_ARGUMENTS]
+                        additional arguments passed to the ipython kernel on
+                        starting. Examples are `--pylab=inline`.
   --verbose             if set then text output is send to the console.
+
 ```
 
 ### show differences
@@ -55,11 +64,13 @@ optional arguments:
 ```
 --show-diff
 ```
+
 This option will output a `diff`-like comparion of both cells to show what is different in the output. This will only be enabled for cell with text-like output, (e.g. text, html). It is automatically disabled for pictures and SVG.
 
 ### cell specific commands
 
 You can start a cell with a hashbang `#!` and add some commands to it like
+
 ```
 #! skip              : will not even execute a cell and just skip it
 #! ignore            : will run the cell, but not fail if anything happens and just continue
@@ -75,6 +86,7 @@ You can start a cell with a hashbang `#!` and add some commands to it like
 ```
   --strict
 ```
+
 The strict mode only causes cell with differing output to fail. Default setting is that a diff is okay.
 
 Note that UUIDs and hex adresses (usually memory adresses) are always replaced by a unique address so different memory addresses will not cause a diff
@@ -92,9 +104,11 @@ Lastly, try to avoid that timeouts happen. This is an indication of a poor test 
 #### Cause a fail and restart
 
 The option
+
 ```
 --restart-if-fail [max-number-of-restarts, default:0]
 ```
+
 will cause to restart the whole notebook in a fresh kernel, if a cell executed with `fail`. Here fail means whatever you declared to be a `fail`. In `strict` mode also a difference in output will cause a restart.
 
 Also here. Be careful using this option. It is again usually a sign of poor example design should it be possible to fail, if there is no error, but some rando results involved that are not what is "hoped" for and thus cause a fail.

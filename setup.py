@@ -88,7 +88,7 @@ def buildKeywordDictionary():
     from distutils.core import Extension
     setupKeywords = {}
     setupKeywords["name"]              = "ipynbtest"
-    setupKeywords["version"]           = "0.0.1-alpha"
+    setupKeywords["version"]           = "0.1.6"
     setupKeywords["author"]            = "Jan-Hendrik Prinz"
     setupKeywords["author_email"]      = "jan.prinz@choderalab.org"
     setupKeywords["license"]           = "GPL 2.0"
@@ -127,7 +127,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
