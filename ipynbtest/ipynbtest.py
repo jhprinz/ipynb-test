@@ -63,9 +63,15 @@ Nov-09 2015:
 - Moved to separate installable package
 
 May-17 2016:
-- Fix creating of stdout cell. Depending on cache flushing multiple output cell coult have been
-  generated during running while store files contain only one. These will be combined now into one
-- Add check for `idle` status to figure out if cell execution is finished. This is much faster
+- Fix creating of stdout cell. Depending on cache flushing multiple output cell
+  coult have been generated during running while store files contain only one.
+  These will be combined now into one
+- Add check for `idle` status to figure out if cell execution is finished.
+  This is much faster
+
+Sep-20 2016:
+- Removed default --pylab=inline. Added cmd option `extra-arguments` instead
+- Little cleanup of the code
 
 The original is found in a gist under https://gist.github.com/minrk/2620735
 """
@@ -343,10 +349,13 @@ class IPyKernel(object):
 
     """
 
-    def __init__(self, nb_version=4):
+    def __init__(self, nb_version=4, extra_arguments=None):
         # default timeout time is 60 seconds
         self.default_timeout = 60
-        self.extra_arguments = ['--pylab=inline']
+
+        if extra_arguments is None:
+            extra_arguments = []
+        self.extra_arguments = extra_arguments
         self.nb_version = nb_version
 
     def __enter__(self):
@@ -703,9 +712,9 @@ class IPyKernel(object):
         return source is None or source == ''
 
 
-# ===============================================================================
+# ==============================================================================
 #  MAIN
-# ===============================================================================
+# ==============================================================================
 
 if __name__ == '__main__':
     total_start_time = time.time()
@@ -720,37 +729,43 @@ if __name__ == '__main__':
         help='the notebook to be checked',
         type=str)
 
-    parser.add_argument('--timeout', dest='timeout',
-                        type=int, default=300,
-                        help='the default timeout time in seconds for a cell ' +
-                             'evaluation. Default is 300s (5mins). Note that travis ' +
-                             'will consider it an error by default if after 600s (10mins) ' +
-                             'no output is generated. So 600s is the default limit by travis. '
-                             'However, a test cell that takes this long should be split in ' +
-                             'more than one or simplified.')
+    parser.add_argument(
+        '--timeout', dest='timeout',
+        type=int, default=300,
+        help='the default timeout time in seconds for a cell ' +
+             'evaluation. Default is 300s (5mins). Note that travis ' +
+             'will consider it an error by default if after 600s (10mins) ' +
+             'no output is generated. So 600s is the default limit by travis. '
+             'However, a test cell that takes this long should be split in ' +
+             'more than one or simplified.')
 
-    parser.add_argument('--rerun-if-timeout', dest='rerun',
-                        type=int, default=2, nargs='?',
-                        help='if set then a timeout in a cell will cause to run ' +
-                             'the. Default is 2 (means make up to 3 attempts)')
+    parser.add_argument(
+        '--rerun-if-timeout', dest='rerun',
+        type=int, default=2, nargs='?',
+        help='if set then a timeout in a cell will cause to run ' +
+             'the. Default is 2 (means make up to 3 attempts)')
 
-    parser.add_argument('--restart-if-fail', dest='restart',
-                        type=int, default=0, nargs='?',
-                        help='if set then a fail in a cell will cause to restart ' +
-                             'the full notebook!. Default is 0 (means NO rerun).' +
-                             'Use this with care.')
+    parser.add_argument(
+        '--restart-if-fail', dest='restart',
+        type=int, default=0, nargs='?',
+        help='if set then a fail in a cell will cause to restart ' +
+             'the full notebook!. Default is 0 (means NO rerun).' +
+             'Use this with care.')
 
-    parser.add_argument('--strict', dest='strict',
-                        action='store_true',
-                        default=False,
-                        help='if set to true then the default test is that cell ' +
-                             'have to match otherwise a diff will not be ' +
-                             'considered a failed test')
+    parser.add_argument(
+        '--strict', dest='strict',
+        action='store_true',
+        default=False,
+        help='if set to true then the default test is that cell ' +
+             'have to match otherwise a diff will not be ' +
+             'considered a failed test')
 
-    parser.add_argument('--eval', dest='eval',
-                        type=str, default='', nargs='?',
-                        help='the argument will be run before the first cell is executed. ' +
-                             'This can be used to set specific values without changing the notebook.')
+    parser.add_argument(
+        '--eval', dest='eval',
+        type=str, default='', nargs='?',
+        help='the argument will be run before the first cell is executed. ' +
+             'This can be used to set specific values without changing the '
+             'notebook.')
 
     parser.add_argument(
         '--pass-if-timeout',
@@ -772,6 +787,12 @@ if __name__ == '__main__':
         dest='abort_fail', action='store_true',
         default=False,
         help='if set to true then a fail will stop the whole test.')
+
+    parser.add_argument(
+        '--extra-arguments', dest='extra_arguments',
+        type=str, default='', nargs='?',
+        help='additional arguments passed to the ipython kernel on starting. '
+             'Examples are `--pylab=inline`. ')
 
     parser.add_argument(
         '--verbose',
@@ -813,7 +834,7 @@ if __name__ == '__main__':
 
         tv.reset()
         tv.write("starting kernel ... ")
-        with IPyKernel() as ipy:
+        with IPyKernel(extra_arguments=args.extra_arguments) as ipy:
             ipy.default_timeout = args.timeout
             tv.writeln("ok")
 
