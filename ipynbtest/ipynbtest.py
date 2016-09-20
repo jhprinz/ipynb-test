@@ -819,6 +819,8 @@ if __name__ == '__main__':
     timeout_rerun = args.rerun
     fail_restart = args.restart
 
+    extra_arguments = args.extra_arguments.split(" ")
+
     with open(ipynb) as f:
         nb = nbformat.reads(f.read(), 4)
         # Convert all notebooks to the format IPython 3.0.0 uses to
@@ -834,7 +836,7 @@ if __name__ == '__main__':
 
         tv.reset()
         tv.write("starting kernel ... ")
-        with IPyKernel(extra_arguments=args.extra_arguments) as ipy:
+        with IPyKernel(extra_arguments=extra_arguments) as ipy:
             ipy.default_timeout = args.timeout
             tv.writeln("ok")
 
