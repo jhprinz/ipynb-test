@@ -24,6 +24,8 @@ requirements:
     - nbformat
 
 test:
+  requires:
+    - matplotlib
   files:
     - ../../examples/ipynbtest_tutorial.ipynb
 

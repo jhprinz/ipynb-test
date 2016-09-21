@@ -157,7 +157,7 @@ class TravisConsole(object):
     @staticmethod
     def _indent(s, num=4):
         lines = s.splitlines(True)
-        lines = map(lambda s: ' ' * num + s, lines)
+        lines = map(lambda x: ' ' * num + x, lines)
         return ''.join(lines)
 
     def writeln(self, s, indent=0):
@@ -197,6 +197,9 @@ class TravisConsole(object):
             self.stream.write(s)
 
         self.stream.flush()
+
+    def warning(self, s):
+        self.write(tv.red(s))
 
     @staticmethod
     def red(s):
@@ -382,24 +385,44 @@ class IPyKernel(object):
             except Empty:
                 break
 
+        self.cmd_list = []
+        self.msg_list = {}
+
         return self
 
-    def execute(self, source):
-        self.kc.execute(source + '\n')
-        self.shell.get_msg(timeout=0.05)
+    def clear(self):
+        self.iopub.get_msgs()
 
-        while True:
-            try:
-                msg = self.iopub.get_msg(timeout=0.05)
-            except Empty:
-                break
+    def execute(self, cmd):
+        uid = self.kc.execute(cmd)
+        self.cmd_list.append((uid, cmd))
+        return uid
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.kc.stop_channels()
         self.km.shutdown_kernel()
+        del self.msg_list
+        del self.cmd_list
         del self.km
 
-    def run(self, cell, timeout=None):
+    def listen(self, uid, use_timeout=None):
+        if use_timeout is None:
+            use_timeout = self.default_timeout
+
+        while True:
+            if uid in self.msg_list and len(self.msg_list[uid]) > 0:
+                return self.msg_list[uid].pop(0)
+
+            msg = self.iopub.get_msg(timeout=use_timeout)
+            if 'msg_id' in msg['parent_header']:
+                msg_uid = msg['parent_header']['msg_id']
+
+                if msg_uid not in self.msg_list:
+                    self.msg_list[msg_uid] = []
+
+                self.msg_list[msg_uid].append(msg)
+
+    def run(self, cell, use_timeout=None):
         """
         Run a notebook cell in the IPythonKernel
 
@@ -407,42 +430,37 @@ class IPyKernel(object):
         ----------
         cell : IPython.notebook.Cell
             the cell to be run
-        timeout : int or None (default)
+        use_timeout : int or None (default)
             the time in seconds after which a cell is stopped and assumed to
             have timed out. If set to None the value in `default_timeout`
             is used
 
         Returns
         -------
-        list of outs
+        list of ex_cell_outputs
             a list of NotebookNodes of the returned types. This is
             similar to the list of outputs generated when a cell is run
         """
 
-        use_timeout = self.default_timeout
-
         if timeout is not None:
-            use_timeout = timeout
+            use_timeout = use_timeout
+        else:
+            use_timeout = self.default_timeout
 
-        if hasattr(cell, 'input'):
-            self.kc.execute(cell.input)
-        elif hasattr(cell, 'source'):
-            self.kc.execute(cell.source)
+        if hasattr(cell, 'source'):
+            uid = self.execute(cell.source)
         else:
             raise AttributeError('No source/input key')
-
-        self.shell.get_msg(timeout=use_timeout)
 
         outs = []
         stdout_cells = {}
 
         while True:
-            try:
-                msg = self.iopub.get_msg(timeout=1.00)
-            except Empty:
-                break
+            msg = self.listen(uid, use_timeout)
+
             msg_type = msg['msg_type']
-            if msg_type in ('pyin', 'execute_input'):
+
+            if msg_type == 'execute_input':
                 continue
             elif msg_type == 'clear_output':
                 outs = []
@@ -454,36 +472,38 @@ class IPyKernel(object):
 
                 continue
 
+            out_cell = nbformat.NotebookNode(output_type=msg_type)
+
             content = msg['content']
-            out = nbformat.NotebookNode(output_type=msg_type)
 
             if msg_type == 'stream':
                 name = content['name']
                 if name not in stdout_cells:
-                    out.name = name
-                    out.text = content['text']
-                    stdout_cells[name] = out
-                    outs.append(out)
+                    out_cell.name = name
+                    out_cell.text = content['text']
+                    stdout_cells[name] = out_cell
+                    outs.append(out_cell)
                 else:
                     # we already have a stdout cell, so append to it
                     stdout_cells[name].text += content['text']
 
-            elif msg_type in ('display_data', 'pyout', 'execute_result'):
+            elif msg_type in ('display_data', 'execute_result'):
                 if hasattr(content, 'execution_count'):
-                    out['execution_count'] = content['execution_count']
+                    out_cell['execution_count'] = content['execution_count']
                 else:
-                    out['execution_count'] = None
-                out['data'] = content['data']
-                out['metadata'] = content['metadata']
+                    out_cell['execution_count'] = None
 
-                outs.append(out)
+                out_cell['data'] = content['data']
+                out_cell['metadata'] = content['metadata']
+
+                outs.append(out_cell)
 
             elif msg_type == 'error':
-                out.ename = content['ename']
-                out.evalue = content['evalue']
-                out.traceback = content['traceback']
+                out_cell.ename = content['ename']
+                out_cell.evalue = content['evalue']
+                out_cell.traceback = content['traceback']
 
-                outs.append(out)
+                outs.append(out_cell)
 
             elif msg_type.startswith('comm_'):
                 # messages used to initialize, close and unpdate widgets
@@ -491,9 +511,120 @@ class IPyKernel(object):
                 pass
 
             else:
-                print "unhandled iopub msg:", msg_type
+                tv.warning("Unhandled iopub msg of type `%s`" % msg_type)
 
         return outs
+
+    def get_commands(self, cell):
+        """
+        Extract potential commands from the first line of a cell
+
+        if a code cell starts with the hashbang `#!` it can be followed by
+        a comma separated list of commands. Each command can be
+        1. a single key `skip`, or
+        2. a key/value pair separated by a colon `timeout:[int]`
+
+        Parameters
+        ----------
+        cell : a NotebookCell
+            the cell to be examined
+
+        Returns
+        -------
+        dict
+            a dict of key/value pairs. For a single command the value is `True`
+        """
+        commands = {}
+        source = cell.source
+        if source is not None:
+            lines = source.splitlines()
+            if len(lines) > 0:
+                n_line = 0
+                line = lines[n_line].strip()
+                while line.startswith('#!') or len(line) == 0:
+                    txt = line[2:].strip()
+
+                    parts = txt.split(',')
+                    for part in parts:
+                        subparts = part.split(':')
+                        if len(subparts) == 1:
+                            commands[subparts[0].strip().lower()] = True
+                        elif len(subparts) == 2:
+                            commands[subparts[0].strip().lower()] = subparts[1]
+
+                    n_line += 1
+                    line = lines[n_line]
+
+        return commands
+
+    def is_empty_cell(self, cell):
+        """
+        Check if a cell has no code
+
+        Parameters
+        ----------
+        cell : a NotebookCell
+            the cell to be examined
+
+        Returns
+        -------
+        bool
+            True if the cell has no code, False otherwise
+        """
+        return not bool(cell.source)
+
+
+class TypedOutput(object):
+    """
+    Simple class to define possible outputs like stdout, png, etc
+
+    It will know how to detect these, have a name by which to address the
+    type and can compare
+
+    """
+
+    name = ''
+    output_type = ''
+
+    def __init__(self, output):
+        self._out = output
+        self._key = None
+
+    def __nonzero__(self):
+        return self.otype == self.output_type
+
+    def __eq__(self, other):
+        if type(other) is type(self):
+            return self.key == other.key
+        else:
+            raise NotImplemented
+
+    def __ne__(self, other):
+        if type(other) is not type(self):
+            return True
+        else:
+            return self.key != other.key
+
+    @property
+    def key(self):
+        if self._key is None:
+            self._key = self._cmp_key()
+
+        return self._key
+
+    def _cmp_key(self):
+        return ''
+
+    def compare_str(self, other):
+        return ['>>> diff in %s' % str(self)] + \
+            self.run_ndiff(self.key, other.key)
+
+    @property
+    def otype(self):
+        return self._out['output_type']
+
+    def __str__(self):
+        return '%s.%s' % (self.otype, self.name)
 
     @staticmethod
     def sanitize(s):
@@ -521,195 +652,106 @@ class IPyKernel(object):
         # normalize UUIDs:
         s = re.sub(r'[a-f0-9]{8}(\-[a-f0-9]{4}){3}\-[a-f0-9]{12}', 'U-U-I-D', s)
 
-        # fix problem with
-
         return s
 
-    def compare_outputs(
-            self,
-            test,
-            ref,
-            skip_compare=('traceback', 'latex', 'execution_count')
-    ):
-        """
-        Compare two lists of `NotebookNode`s
+    @staticmethod
+    def run_ndiff(original, testing):
+        return list(difflib.ndiff(original.splitlines(1), testing.splitlines(1)))
 
-        Parameters
-        ----------
-        test : list of `NotebookNode`
-            the list of be tested generated by the kernel
-        ref : list of `NotebookNode`
-            the reference list read from the notebook
-        skip_compare : list of str
-            a list of strings that name node types that are not to be tested
 
-        Returns
-        -------
-        bool
-            is True if both lists are different
-        list of diff
-            a list of diff (str) the represent the differences
-        """
-        diff = False
-        diff_list = []
+class StdOutOutput(TypedOutput):
+    name = 'stdout'
+    output_type = 'stream'
 
-        #        print ref.keys(), test.keys()
+    def __nonzero__(self):
+        return super(StdOutOutput, self).__nonzero__() and \
+            self._out['name'] == self.name
 
-        if self.nb_version == 4:
-            for key in ref:
-                if key not in test:
-                    return True, ["missing key: %s != %s" % (test.keys(), ref.keys())]
+    def _cmp_key(self):
+        return self.sanitize(self.text)
 
-                elif key not in skip_compare:
-                    if key == 'data':
-                        for data_key in test[key]:
-                            my_diff = self.do_diff(
-                                data_key,
-                                test[key],
-                                ref[key])
+    @property
+    def text(self):
+        return str(self._out['text'])
 
-                            if my_diff is not None:
-                                diff_list += my_diff
-                                diff = True
 
-                    else:
-                        # can this happen?
-                        my_diff = self.do_diff(key, test, ref)
-                        if my_diff is not None:
-                            diff_list += my_diff
-                            diff = True
+class StdErrOutput(StdOutOutput):
+    name = 'stderr'
 
-        return diff, diff_list
 
-    def do_diff(self, key, test_cell, ref_cell):
-        """
-        Compare the key of two dicts
+class MimeBundleOutput(TypedOutput):
+    name = 'mime'
+    output_type = 'display_data'
 
-        Parameters
-        ----------
-        key : string
-            the key to be compared
-        test_cell : dict
-            a dict with `key` as a key of string value
-        ref_cell : dict
-            a dict with `key` as a key of string value
+    @property
+    def data(self):
+        return self._out['data']
 
-        Returns
-        -------
-        list of diff (str)
-            a list of diff representing the differences
-        """
+    def __nonzero__(self):
+        return super(MimeBundleOutput, self).__nonzero__() and \
+            self.name in self.data
 
-        if hasattr(ref_cell, key):
-            s1 = self.sanitize(ref_cell[key])
-        else:
-            s1 = ''
+    def _cmp_key(self):
+        return str(self.data[self.name])
 
-        if hasattr(test_cell, key):
-            s2 = self.sanitize(test_cell[key])
-        else:
-            s2 = ''
 
-        if key in ['image/png', 'image/svg', 'image/svg+xml']:
-            if s1 != s2:
-                return ['>>> diff in %s (size new : %d vs size old : %d )' %
-                        (key, len(s1), len(s2))]
-        else:
-            if s1 != s2:
-                expected = s1.splitlines(1)
-                actual = s2.splitlines(1)
-                diff = difflib.ndiff(expected, actual)
+class ImageOutput(MimeBundleOutput):
+    def compare_str(self, other):
+        return ['>>> diff in %s' % str(self)] + \
+               ['size new : %d vs size old : %d )' % (len(self.key), len(other.key))]
 
-                return ['>>> diff in ' + key] + list(diff)
 
-        return None
+class PNGOutput(ImageOutput):
+    name = 'image/png'
 
-    def get_commands(self, cell):
-        """
-        Extract potential commands from the first line of a cell
 
-        if a code cell starts with the hashbang `#!` it can be followed by
-        a comma separated list of commands. Each command can be
-        1. a single key `skip`, or
-        2. a key/value pair separated by a colon `timeout:[int]`
+class PNGOutputExecuted(PNGOutput):
+    output_type = 'execute_result'
 
-        Parameters
-        ----------
-        cell : a NotebookCell
-            the cell to be examined
 
-        Returns
-        -------
-        dict
-            a dict of key/value pairs. For a single command the value is `True`
-        """
-        commands = {}
-        source = self.get_source(cell)
-        if source is not None:
-            lines = source.splitlines()
-            if len(lines) > 0:
-                n_line = 0
-                line = lines[n_line].strip()
-                while line.startswith('#!') or len(line) == 0:
-                    txt = line[2:].strip()
+class SVGOutput(ImageOutput):
+    name = 'image/svg'
 
-                    parts = txt.split(',')
-                    for part in parts:
-                        subparts = part.split(':')
-                        if len(subparts) == 1:
-                            commands[subparts[0].strip().lower()] = True
-                        elif len(subparts) == 2:
-                            commands[subparts[0].strip().lower()] = subparts[1]
 
-                    n_line += 1
-                    line = lines[n_line]
+class SVGOutputExecuted(PNGOutput):
+    output_type = 'execute_result'
 
-        return commands
 
-    def get_source(self, cell):
-        """
-        get the source code of a cell
+class TextPlainOutput(MimeBundleOutput):
+    name = 'text/plain'
 
-        Notes
-        -----
-        This is legacy of IPython 2/3 conversion.
+    @property
+    def text(self):
+        return str(self.data[self.name])
 
-        Parameters
-        ----------
-        cell : a NotebookCell
-            the cell to be examined
+    def _cmp_key(self):
+        return self.sanitize(self.text)
 
-        Returns
-        -------
-        string
-            the source code
 
-        """
-        if cell.cell_type == 'code':
-            if hasattr(cell, 'input'):
-                return cell.input
-            elif hasattr(cell, 'source'):
-                return cell.source
-            else:
-                return None
+class TextPlainOutputExecuted(TextPlainOutput):
+    output_type = 'execute_result'
 
-    def is_empty_cell(self, cell):
-        """
-        Check if a cell has no code
 
-        Parameters
-        ----------
-        cell : a NotebookCell
-            the cell to be examined
+# list all possible Mime / Output Types
+registered_output_types = {
+    tt.output_type + '.' + tt.name: tt for tt in [
+        StdOutOutput, StdErrOutput, TextPlainOutput, TextPlainOutputExecuted,
+        PNGOutput, PNGOutputExecuted, SVGOutput, SVGOutputExecuted
+    ]}
 
-        Returns
-        -------
-        bool
-            True if the cell has no code, False otherwise
-        """
-        source = self.get_source(cell)
+# these types will be considered by default
+used_output_types = ['stream.stdout', 'execute_result.text/plain']
 
-        return source is None or source == ''
+
+def get_outs(cell_outputs, output_types):
+    outs = []
+    for output in cell_outputs:
+        for tt_class in output_types:
+            tt = registered_output_types[tt_class](output)
+            if tt:
+                outs.append(tt)
+
+    return outs
 
 
 # ==============================================================================
@@ -730,7 +772,7 @@ if __name__ == '__main__':
         type=str)
 
     parser.add_argument(
-        '--timeout', dest='timeout',
+        '-t', '--timeout', dest='timeout',
         type=int, default=300,
         help='the default timeout time in seconds for a cell ' +
              'evaluation. Default is 300s (5mins). Note that travis ' +
@@ -753,7 +795,15 @@ if __name__ == '__main__':
              'Use this with care.')
 
     parser.add_argument(
-        '--strict', dest='strict',
+        '-l', '--lazy', dest='lazy',
+        action='store_true',
+        default=False,
+        help='if set to true then the default test is that cell ' +
+             'have to match otherwise a diff will not be ' +
+             'considered a failed test')
+
+    parser.add_argument(
+        '-s', '--strict', dest='strict',
         action='store_true',
         default=False,
         help='if set to true then the default test is that cell ' +
@@ -768,6 +818,17 @@ if __name__ == '__main__':
              'notebook.')
 
     parser.add_argument(
+        '--tested-types', dest='ttypes',
+        type=str, default='stream.stdout,execute_result.text/plain', nargs='?',
+        help='the argument will specify be output types to be checked for'
+             'equality. Currently the following types "' +
+             ', '.join(registered_output_types.keys()) + ' " can be given as a'
+             'comma `,` separated list. Default setting is "' +
+             ', '.join(used_output_types) + '" which will test stdout and '
+             'test/plain exeution results. No images will be tested.'
+        )
+
+    parser.add_argument(
         '--pass-if-timeout',
         dest='no_timeout', action='store_true',
         default=False,
@@ -775,7 +836,7 @@ if __name__ == '__main__':
              'passed test')
 
     parser.add_argument(
-        '--show-diff',
+        '-d', '--show-diff',
         dest='show_diff',
         action='store_true',
         default=False,
@@ -795,7 +856,13 @@ if __name__ == '__main__':
              'Examples are `--pylab=inline`. ')
 
     parser.add_argument(
-        '--verbose',
+        '-y', '--pylab',
+        dest='pylab', action='store_true',
+        default=False,
+        help='if set then pylab will be added to the extra arguments.')
+
+    parser.add_argument(
+        '-v', '--verbose',
         dest='verbose', action='store_true',
         default=False,
         help='if set then text output is send to the ' +
@@ -819,10 +886,16 @@ if __name__ == '__main__':
     timeout_rerun = args.rerun
     fail_restart = args.restart
 
-    extra_arguments = args.extra_arguments.split(" ")
+    extra_arguments = args.extra_arguments.split(";")
+
+    if args.pylab:
+        extra_arguments = ['--pylab=inline'] + extra_arguments
+
+    used_output_types = [t_name.strip() for t_name in args.ttypes.split(',')]
+
 
     with open(ipynb) as f:
-        nb = nbformat.reads(f.read(), 4)
+        nb = nbformat.reads(unicode(f.read()), 4)
         # Convert all notebooks to the format IPython 3.0.0 uses to
         # simplify comparison
         nb = nbformat.convert(nb, 4)
@@ -840,7 +913,8 @@ if __name__ == '__main__':
             ipy.default_timeout = args.timeout
             tv.writeln("ok")
 
-            nbs = ipynb.split('.')
+            nbs = ipynb.split('/')[-1].split('.')
+
             nb_class_name = nbs[1] + '.' + nbs[0].replace(" ", "_")
 
             tv.br()
@@ -854,7 +928,6 @@ if __name__ == '__main__':
                 ipy.execute(args.eval)
 
             for cell in ws.cells:
-
                 if notebook_restart:
                     # if we restart anyway skip all remaining cells
                     continue
@@ -862,12 +935,15 @@ if __name__ == '__main__':
                 if cell.cell_type == 'markdown':
                     for line in cell.source.splitlines():
                         # only tv.writeln(headlines in markdown
-                        # TODO: exclude # comments in code blocks
                         if line.startswith('#') and line[1] != '!':
                             tv.writeln(line)
 
-                if cell.cell_type == 'heading':
-                    tv.writeln('#' * cell.level + ' ' + cell.source)
+                # if cell.cell_type == 'heading':
+                #     tv.writeln('#' * cell.level + ' ' + cell.source)
+
+                if cell.cell_type == 'raw':
+                    # handle RAW cells
+                    continue
 
                 if cell.cell_type != 'code':
                     continue
@@ -878,23 +954,23 @@ if __name__ == '__main__':
                     # empty cell will not be tested
                     continue
 
-                if hasattr(cell, 'prompt_number'):
-                    tv.write(nb_class_name + '.' + 'In [%3i]' %
-                             cell.prompt_number + ' ... ')
-                elif hasattr(cell, 'execution_count') and \
-                                cell.execution_count is not None:
+                # if hasattr(cell, 'prompt_number'):
+                #     tv.write(nb_class_name + '.' + 'In [%3i]' %
+                #              cell.prompt_number + ' ... ')
+                if hasattr(cell, 'execution_count') and \
+                        cell.execution_count is not None:
                     tv.write(nb_class_name + '.' + 'In [%3i]' %
                              cell.execution_count + ' ... ')
                 else:
                     tv.write(nb_class_name + '.' + 'In [---]' + ' ... ')
 
-                commands = ipy.get_commands(cell)
+                nb_cell_commands = ipy.get_commands(cell)
 
                 result = 'success'
 
                 timeout = ipy.default_timeout
 
-                if 'skip' in commands:
+                if 'skip' in nb_cell_commands:
                     tv.write_result('skip')
                     continue
 
@@ -902,7 +978,7 @@ if __name__ == '__main__':
                 cell_run_again = True
                 cell_passed = True
 
-                outs = []
+                ex_cell_outputs = []
 
                 while cell_run_again:
                     cell_run_count += 1
@@ -910,15 +986,21 @@ if __name__ == '__main__':
                     cell_passed = True
 
                     try:
-                        if 'timeout' in commands:
-                            outs = ipy.run(cell, timeout=int(commands['timeout']))
+                        if 'timeout' in nb_cell_commands:
+                            ex_cell_outputs = ipy.run(
+                                cell,
+                                use_timeout=int(nb_cell_commands['timeout']))
                         else:
-                            outs = ipy.run(cell)
+                            ex_cell_outputs = ipy.run(cell)
 
                     except Exception as e:
-                        # Internal IPython error occurred (might still be
-                        # that the cell did not execute correctly)
-                        if 'ignore' not in commands:
+                        # we got a jupyter problem to execute something
+                        # in the kernel at all. Not that the execution raised
+                        # an error
+                        # Might still be that the cell did not execute
+                        # or timeout
+
+                        if 'ignore' not in nb_cell_commands:
                             cell_passed = False
                             if repr(e) == 'Empty()':
                                 # Assume it has been timed out!
@@ -926,19 +1008,20 @@ if __name__ == '__main__':
                                     cell_run_again = True
                                     tv.write('timeout [retry #%d] ' % cell_run_count)
                                 else:
-                                    if 'pass-if-timeout' in commands:
+                                    if 'pass-if-timeout' in nb_cell_commands:
                                         tv.write_result('timeout', okay_list={'timeout': True})
-                                    elif 'fail-if-timeout' in commands:
+                                    elif 'fail-if-timeout' in nb_cell_commands:
                                         tv.write_result('timeout', okay_list={'timeout': False})
                                     else:
                                         tv.write_result('timeout')
 
-                                        # tv.writeln('>>> TimeOut (%is)' % args.timeout)
+                                        ipy.clear()
+
                             else:
                                 tv.write_result('kernel')
                                 tv.fold_open('ipynb.kernel')
-                                tv.writeln('>>> ' + out.ename + ' ("' + out.evalue + '")')
-                                tv.writeln(repr(e), indent=4)
+                                tv.writeln('>>> ' + e[0] + ' ("' + e[1] + '")')
+                                tv.writeln(repr(e[2]), indent=4)
                                 tv.fold_close('ipynb.kernel')
                         else:
                             if repr(e) == 'Empty()':
@@ -949,8 +1032,8 @@ if __name__ == '__main__':
                                 tv.write('kernel / ')
                                 tv.write_result('ignore')
                                 tv.fold_open('ipynb.kernel')
-                                tv.writeln('>>> ' + out.ename + ' ("' + out.evalue + '")')
-                                tv.writeln(repr(e), indent=4)
+                                tv.writeln('>>> ' + e[0] + ' ("' + e[1] + '")')
+                                tv.writeln(repr(e[2]), indent=4)
                                 tv.fold_close('ipynb.kernel')
 
                 if not cell_passed:
@@ -966,10 +1049,13 @@ if __name__ == '__main__':
                 diff = False
                 diff_str = ''
                 out_str = ''
-                for out in outs:
+
+                # Check first, if we have an error output
+
+                for out in ex_cell_outputs:
                     if out.output_type == 'error':
                         # An python error occurred. Cell is not completed correctly
-                        if 'ignore' not in commands:
+                        if 'ignore' not in nb_cell_commands:
                             tv.write_result('error')
                         else:
                             tv.write('error / ')
@@ -984,39 +1070,57 @@ if __name__ == '__main__':
                         tv.fold_close('ipynb.error')
                         failed = True
 
-                if not failed:
-                    if len(outs) != len(cell.outputs):
-                        diff_str += tv.blue(">>> diff in number of output parts %d vs %d\n") % (
-                        len(outs), len(cell.outputs))
-                        for no, out in enumerate(outs):
-                            diff_str += tv.blue(">>> %d vs %s\n") % (no, out.output_type)
-                            diff_str += tv.blue(">>> %s\n") % str(out)
+                # if there has been no `error` so far run the comparison
 
-                        for no, out in enumerate(cell.outputs):
-                            diff_str += tv.blue(">>> %d vs %s\n") % (no, out.output_type)
-                            diff_str += tv.blue(">>> %s\n") % str(out)
+                # this will first filter cells we want to compare at all
+                # and then run the comparison on these
+
+                # we will create a sorted list of all relevant contenttypes
+
+                ex_cell_outs = get_outs(ex_cell_outputs, used_output_types)
+                nb_cell_outs = get_outs(cell.outputs, used_output_types)
+
+                out_str = ''
+                err_str = ''
+
+                if verbose or 'verbose' in nb_cell_commands:
+                    text_cells = get_outs(ex_cell_outputs, ['stream.stdout', 'execute_result.text/plain'])
+                    for text_cell in text_cells:
+                        out_str += text_cell.text.strip() + '\n'
+
+                    text_cells = get_outs(ex_cell_outputs, ['stream.stderr'])
+                    for text_cell in text_cells:
+                        err_str += text_cell.text.strip() + '\n'
+
+                if not failed:
+                    if len(ex_cell_outs) != len(nb_cell_outs):
+                        diff_str += tv.blue(">>> diff in number of relevant content parts %d vs %d\n") % (
+                            len(ex_cell_outputs), len(cell.outputs))
+
+                        if len(ex_cell_outs) > len(nb_cell_outs):
+                            nb_cell_outs += ['---'] * (len(ex_cell_outs) - len(nb_cell_outs))
+                        else:
+                            ex_cell_outs += ['---'] * (len(nb_cell_outs) - len(ex_cell_outs))
+
+                        for orig, test in zip(nb_cell_outs, ex_cell_outs):
+                            diff_str += tv.green("    %36s ") % str(orig)
+                            diff_str += ' | ' + tv.red("%s\n") % str(test)
 
                         diff = True
                     else:
-                        for out, ref in zip(outs, cell.outputs):
-                            this_diff, this_str = ipy.compare_outputs(out, ref)
-                            if 'verbose' in commands or verbose:
-                                if 'data' in out:
-                                    for key, value in out.data.iteritems():
-                                        if 'text' in key:
-                                            out_str += value + '\n'
-
-                            if this_diff:
-                                # Output is different than the one in the notebook.
-                                diff_str += tv.format_diff(this_str)
+                        for o1, o2 in zip(nb_cell_outs, ex_cell_outs):
+                            if o1 != o2:
+                                # Output is different
+                                err_message = o2.compare_str(o1)
+                                diff_str += tv.format_diff(err_message)
                                 diff = True
 
                 if diff and not failed:
-                    if 'ignore' not in commands:
-                        if 'strict' in commands:
+                    if 'ignore' not in nb_cell_commands:
+                        if 'strict' in nb_cell_commands:
                             # strict mode means a difference will fail the test
                             tv.write_result('diff', okay_list={'diff': False})
-                        elif 'lazy' in commands:
+                        elif 'lazy' in nb_cell_commands:
                             # lazy mode means a difference will pass the test
                             tv.write_result('diff', okay_list={'diff': True})
                         else:
@@ -1038,9 +1142,18 @@ if __name__ == '__main__':
                     # we had a fail so restart the whole notebook
                     notebook_restart = True
 
-                if out_str != '' and 'quiet' not in commands:
+                if out_str != '' and 'quiet' not in nb_cell_commands:
+                    n_lines = len(out_str.strip().split('\n'))
+                    tv.write(tv.blue(">>> stdout / result text [%d line(s)]\n" % n_lines))
                     tv.fold_open('ipynb.out')
-                    tv.writeln(out_str)
+                    tv.writeln(out_str, indent=4)
+                    tv.fold_close('ipynb.out')
+
+                if err_str != '' and 'quiet' not in nb_cell_commands:
+                    n_lines = len(err_str.strip().split('\n'))
+                    tv.write(tv.red(">>> stderr / result text [%d line(s)]\n" % n_lines))
+                    tv.fold_open('ipynb.out')
+                    tv.writeln(err_str, indent=4)
                     tv.fold_close('ipynb.out')
 
                 if args.abort_fail and tv.last_fail:
