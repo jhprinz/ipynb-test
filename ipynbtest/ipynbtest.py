@@ -2,10 +2,11 @@
 """
 Simple example script for running and testing IPython notebooks.
 
-usage: ipynbtest.py [-h] [--timeout TIMEOUT] [--rerun-if-timeout [RERUN]]
-                    [--restart-if-fail [RESTART]] [--strict] [--eval [EVAL]]
-                    [--pass-if-timeout] [--show-diff] [--abort-if-fail]
-                    [--verbose]
+usage: ipynbtest.py [-h] [-t TIMEOUT] [--rerun-if-timeout [RERUN]]
+                    [--restart-if-fail [RESTART]] [-l] [-s] [--eval [EVAL]]
+                    [--tested-types [TTYPES]] [--pass-if-timeout] [-d]
+                    [--abort-if-fail] [--extra-arguments [EXTRA_ARGUMENTS]]
+                    [-y] [-v]
                     file.ipynb
 
 Run all cells in an ipython notebook as a test and check whether these
@@ -16,7 +17,8 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  --timeout TIMEOUT     the default timeout time in seconds for a cell
+  -t TIMEOUT, --timeout TIMEOUT
+                        the default timeout time in seconds for a cell
                         evaluation. Default is 300s (5mins). Note that travis
                         will consider it an error by default if after 600s
                         (10mins) no output is generated. So 600s is the
@@ -30,18 +32,39 @@ optional arguments:
                         if set then a fail in a cell will cause to restart the
                         full notebook!. Default is 0 (means NO rerun).Use this
                         with care.
-  --strict              if set to true then the default test is that cell have
+  -l, --lazy            if set to true then the default test is that cell have
+                        to match otherwise a diff will not be considered a
+                        failed test
+  -s, --strict          if set to true then the default test is that cell have
                         to match otherwise a diff will not be considered a
                         failed test
   --eval [EVAL]         the argument will be run before the first cell is
                         executed. This can be used to set specific values
                         without changing the notebook.
+  --tested-types [TTYPES]
+                        the argument will specify be output types to be
+                        checked forequality. Currently the following types
+                        "stream.stdout.text/plain, stream.stderr.text/plain,
+                        execute_result.data.text/plain,
+                        display_data.data.image/png,
+                        display_data.data.image/svg,
+                        display_data.data.text/plain,
+                        execute_result.data.image/png " can be given as acomma
+                        `,` separated list. Default setting is
+                        "stdout.text/plain, data.text/plain" which will test
+                        stdout and test/plain exeution results. No images will
+                        be tested.
   --pass-if-timeout     if set then a timeout (after last retry) is considered
                         a passed test
-  --show-diff           if set to true differences in the cell are shown in
+  -d, --show-diff       if set to true differences in the cell are shown in
                         `diff` style
   --abort-if-fail       if set to true then a fail will stop the whole test.
-  --verbose             if set then text output is send to the console.
+  --extra-arguments [EXTRA_ARGUMENTS]
+                        additional arguments passed to the ipython kernel on
+                        starting. Examples are `--pylab=inline`.
+  -y, --pylab           if set then pylab will be added to the extra
+                        arguments.
+  -v, --verbose         if set then text output is send to the console.
 
 
 Each cell is submitted to the kernel, and the outputs are compared with those
@@ -72,6 +95,15 @@ May-17 2016:
 Sep-20 2016:
 - Removed default --pylab=inline. Added cmd option `extra-arguments` instead
 - Little cleanup of the code
+
+Sep-21 2016
+- Big changes !
+- Rework of the execution of cells. Much faster and more reliable now
+- Fixed a problem where after a rerun of a cell the results woule be
+  compared to the wrong cell
+- Rework of comparison. This is now type/mime based and can easily be
+  extended. You can select which of the comparators to be used
+- added a few options for convenience
 
 The original is found in a gist under https://gist.github.com/minrk/2620735
 """
