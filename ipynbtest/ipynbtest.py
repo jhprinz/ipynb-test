@@ -583,6 +583,7 @@ class TypedOutput(object):
 
     """
 
+    mime = ''
     name = ''
     output_type = ''
 
@@ -624,7 +625,11 @@ class TypedOutput(object):
         return self._out['output_type']
 
     def __str__(self):
-        return '%s.%s' % (self.otype, self.name)
+        return self.identifier
+
+    @property
+    def identifier(self):
+        return '%s.%s.%s' % (self.output_type, self.name, self.mime)
 
     @staticmethod
     def sanitize(s):
@@ -660,8 +665,9 @@ class TypedOutput(object):
 
 
 class StdOutOutput(TypedOutput):
-    name = 'stdout'
     output_type = 'stream'
+    name = 'stdout'
+    mime = 'text/plain'
 
     def __nonzero__(self):
         return super(StdOutOutput, self).__nonzero__() and \
@@ -680,19 +686,20 @@ class StdErrOutput(StdOutOutput):
 
 
 class MimeBundleOutput(TypedOutput):
-    name = 'mime'
+    mime = 'none'
+    name = 'data'
     output_type = 'display_data'
 
     @property
     def data(self):
-        return self._out['data']
+        return self._out[self.name]
 
     def __nonzero__(self):
         return super(MimeBundleOutput, self).__nonzero__() and \
-            self.name in self.data
+            self.mime in self.data
 
     def _cmp_key(self):
-        return str(self.data[self.name])
+        return str(self.data[self.mime])
 
 
 class ImageOutput(MimeBundleOutput):
@@ -702,7 +709,7 @@ class ImageOutput(MimeBundleOutput):
 
 
 class PNGOutput(ImageOutput):
-    name = 'image/png'
+    mime = 'image/png'
 
 
 class PNGOutputExecuted(PNGOutput):
@@ -710,7 +717,7 @@ class PNGOutputExecuted(PNGOutput):
 
 
 class SVGOutput(ImageOutput):
-    name = 'image/svg'
+    mime = 'image/svg'
 
 
 class SVGOutputExecuted(PNGOutput):
@@ -718,11 +725,11 @@ class SVGOutputExecuted(PNGOutput):
 
 
 class TextPlainOutput(MimeBundleOutput):
-    name = 'text/plain'
+    mime = 'text/plain'
 
     @property
     def text(self):
-        return str(self.data[self.name])
+        return str(self.data[self.mime])
 
     def _cmp_key(self):
         return self.sanitize(self.text)
@@ -734,13 +741,13 @@ class TextPlainOutputExecuted(TextPlainOutput):
 
 # list all possible Mime / Output Types
 registered_output_types = {
-    tt.output_type + '.' + tt.name: tt for tt in [
+    tt('').identifier: tt for tt in [
         StdOutOutput, StdErrOutput, TextPlainOutput, TextPlainOutputExecuted,
         PNGOutput, PNGOutputExecuted, SVGOutput, SVGOutputExecuted
     ]}
 
 # these types will be considered by default
-used_output_types = ['stream.stdout', 'execute_result.text/plain']
+used_output_types = ['stdout.text/plain', 'data.text/plain']
 
 
 def get_outs(cell_outputs, output_types):
@@ -819,7 +826,7 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--tested-types', dest='ttypes',
-        type=str, default='stream.stdout,execute_result.text/plain', nargs='?',
+        type=str, default=', '.join(used_output_types), nargs='?',
         help='the argument will specify be output types to be checked for'
              'equality. Currently the following types "' +
              ', '.join(registered_output_types.keys()) + ' " can be given as a'
@@ -891,8 +898,13 @@ if __name__ == '__main__':
     if args.pylab:
         extra_arguments = ['--pylab=inline'] + extra_arguments
 
-    used_output_types = [t_name.strip() for t_name in args.ttypes.split(',')]
+    used_output_filter = [t_name.strip() for t_name in args.ttypes.split(',')]
+    used_output_types = filter(lambda x: any(f in x for f in used_output_filter), registered_output_types)
 
+    if verbose:
+        tv.write(tv.blue('>>> using the following content types to compare\n'))
+        for tt in used_output_types:
+            tv.write(tt + '\n', indent=4)
 
     with open(ipynb) as f:
         nb = nbformat.reads(unicode(f.read()), 4)
@@ -1084,11 +1096,11 @@ if __name__ == '__main__':
                 err_str = ''
 
                 if verbose or 'verbose' in nb_cell_commands:
-                    text_cells = get_outs(ex_cell_outputs, ['stream.stdout', 'execute_result.text/plain'])
+                    text_cells = get_outs(ex_cell_outputs, ['stream.stdout.text/plain', 'execute_result.data.text/plain'])
                     for text_cell in text_cells:
                         out_str += text_cell.text.strip() + '\n'
 
-                    text_cells = get_outs(ex_cell_outputs, ['stream.stderr'])
+                    text_cells = get_outs(ex_cell_outputs, ['stream.stderr.text/plain'])
                     for text_cell in text_cells:
                         err_str += text_cell.text.strip() + '\n'
 
