@@ -84,11 +84,11 @@ if not release:
 
 write_version_py()
 
+
 def buildKeywordDictionary():
-    from distutils.core import Extension
     setupKeywords = {}
     setupKeywords["name"]              = "ipynbtest"
-    setupKeywords["version"]           = "0.1.6"
+    setupKeywords["version"]           = "0.2.0"
     setupKeywords["author"]            = "Jan-Hendrik Prinz"
     setupKeywords["author_email"]      = "jan.prinz@choderalab.org"
     setupKeywords["license"]           = "GPL 2.0"

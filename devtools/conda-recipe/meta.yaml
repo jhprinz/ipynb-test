@@ -1,6 +1,6 @@
 package:
   name: ipynbtest
-  version: "0.1.6"
+  version: "0.2.0"
 
 build:
   preserve_egg_dir: True
