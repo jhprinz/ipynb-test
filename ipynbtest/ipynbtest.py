@@ -939,7 +939,7 @@ if __name__ == '__main__':
             tv.write(tt + '\n', indent=4)
 
     with open(ipynb) as f:
-        nb = nbformat.reads(str(f.read()), 4)
+        nb = nbformat.reads(f.read(), 4)
         # Convert all notebooks to the format IPython 3.0.0 uses to
         # simplify comparison
         nb = nbformat.convert(nb, 4)
