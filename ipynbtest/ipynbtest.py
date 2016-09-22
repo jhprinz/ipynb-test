@@ -710,7 +710,7 @@ class StdOutOutput(TypedOutput):
 
     @property
     def text(self):
-        return str(self._out['text'])
+        return self._out['text']
 
 
 class StdErrOutput(StdOutOutput):
@@ -731,7 +731,7 @@ class MimeBundleOutput(TypedOutput):
             self.mime in self.data
 
     def _cmp_key(self):
-        return str(self.data[self.mime])
+        return self.data[self.mime]
 
 
 class ImageOutput(MimeBundleOutput):
