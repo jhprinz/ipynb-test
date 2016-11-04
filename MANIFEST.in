@@ -1,4 +1,4 @@
-graft openpathsampling
-recursive-include openpathsampling *.py
+graft ipynbtest
+recursive-include ipynbtest *.py
 
-include examples/ipynbtest_tutorial.ipynb
+include ipynbtest/examples/ipynbtest_tutorial.ipynb

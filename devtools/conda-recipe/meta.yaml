@@ -26,8 +26,8 @@ requirements:
 test:
   requires:
     - matplotlib
-  files:
-    - ../../examples/ipynbtest_tutorial.ipynb
+  source_files:
+    - examples/ipynbtest_tutorial.ipynb
 
 about:
   home: https://github.com/jhprinz/ipynb-test

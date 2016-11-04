@@ -92,7 +92,7 @@ def buildKeywordDictionary():
     setupKeywords["version"]           = "0.2.1"
     setupKeywords["author"]            = "Jan-Hendrik Prinz"
     setupKeywords["author_email"]      = "jan.prinz@choderalab.org"
-    setupKeywords["license"]           = "GPL 2.0"
+    setupKeywords["license"]           = "LGPLv2+"
     setupKeywords["url"]               = "http://github.com/jhprinz/ipynb-test"
     setupKeywords["download_url"]      = "http://github.com/jhprinz/ipynb-test"
     setupKeywords["packages"]          = ['ipynbtest']
@@ -110,7 +110,7 @@ def buildKeywordDictionary():
     setupKeywords["description"]       = "Python script to test IPython notebooks."
     setupKeywords["requires"]          = []
     setupKeywords["long_description"]  = """
-    ipynb-test (http://github.com/jhprinz/ipynb-test) is a python script to test ipython notebooks (.ipynb) files.
+    ipynbtest (http://github.com/jhprinz/ipynb-test) is a python script to test ipython notebooks (.ipynb) files.
     It has additional support for integration in travis.
     """
     outputString=""
