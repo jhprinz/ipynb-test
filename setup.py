@@ -101,7 +101,7 @@ def buildKeywordDictionary():
     }
     setupKeywords["scripts"]           = ['ipynbtest/ipynbtest.py']
     setupKeywords["package_data"]      = {
-        'ipynbtest': ['examples/ipynbtest_tutorial.ipynb']
+        'ipynbtest': ['ipynbtest/examples/ipynbtest_tutorial.ipynb']
     }
     setupKeywords['include_package_data'] = True
     setupKeywords["data_files"]        = []
