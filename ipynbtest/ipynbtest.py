@@ -105,6 +105,10 @@ Sep-21 2016
   extended. You can select which of the comparators to be used
 - added a few options for convenience
 
+Nov-4 2016
+- Compatibility with Python 3
+- Preparations for a first release
+
 The original is found in a gist under https://gist.github.com/minrk/2620735
 """
 
@@ -116,22 +120,38 @@ import uuid
 import difflib
 import time
 
-from Queue import Empty
+# --------------------------------
+# Compatibility with IPython 4.0.0
+# --------------------------------
 
 try:
     # IPython 4.0.0+ / Jupyter - the big split
     from jupyter_client.manager import KernelManager
     import nbformat
 
-# print 'Found Jupyter / IPython 4+'
+    # print('Found Jupyter / IPython 4+')
 
 except ImportError:
     # IPython 3.0.0+
     from IPython.kernel.manager import KernelManager
     import IPython.nbformat as nbformat
 
+    # print('Using IPython 3+')
 
-# print 'Using IPython 3+'
+
+# -------------------------------
+# Compatibility with Python 2 / 3
+# -------------------------------
+
+try:
+    # this works only in Python 2 in Python 3 there is no unicode only str
+    basestring = (str, unicode)
+except NameError:
+    # so use unicode in Python 3
+    basestring = str
+
+# use better open to always read unicode
+from io import open
 
 
 class TravisConsole(object):
@@ -165,7 +185,8 @@ class TravisConsole(object):
             self.fold_stack[name] = []
 
         self.fold_count[name] += 1
-        fold_name = self.fold_uuid + '.' + name.lower() + '.' + str(self.fold_count[name])
+        fold_name = self.fold_uuid + '.' + name.lower() + '.' + \
+            str(self.fold_count[name])
 
         self.fold_stack[name].append(fold_name)
 
@@ -181,7 +202,8 @@ class TravisConsole(object):
         name : string
             the name of the fold
         """
-        fold_name = self.fold_uuid + '.' + name.lower() + '.' + str(self.fold_count[name])
+        fold_name = self.fold_uuid + '.' + name.lower() + '.' + \
+            str(self.fold_count[name])
 
         if self.travis:
             self.writeln("travis_fold:end:" + fold_name)
@@ -304,19 +326,20 @@ class TravisConsole(object):
             a string representation of all diffs
         """
         colored_diffs = []
-        for line in difference:
-            if line[0] == '-':
-                colored_diffs.append(self.red(line))
-            elif line[0] == '+':
-                colored_diffs.append(self.green(line))
+        for ll in difference:
+            if ll[0] == '-':
+                colored_diffs.append(self.red(ll))
+            elif ll[0] == '+':
+                colored_diffs.append(self.green(ll))
             else:
-                colored_diffs.append(line)
+                colored_diffs.append(ll)
 
         # remove unnecessary linebreaks
-        colored_diffs = [line.replace('\n', '') for line in colored_diffs]
+        colored_diffs = [ll.replace('\n', '') for ll in colored_diffs]
 
         # remove line we do not want
-        colored_diffs = [line for line in colored_diffs if len(line) > 0 and line[0] != '?']
+        colored_diffs = [ll for ll in colored_diffs
+                         if len(ll) > 0 and ll[0] != '?']
 
         return '\n'.join(colored_diffs)
 
@@ -414,8 +437,12 @@ class IPyKernel(object):
         while True:
             try:
                 self.iopub.get_msg(timeout=0.05)
-            except Empty:
-                break
+            except Exception as e:
+                if repr(e) == 'Empty()':
+                    break
+
+                # we got a real error so raise it
+                raise
 
         self.cmd_list = []
         self.msg_list = {}
@@ -623,8 +650,10 @@ class TypedOutput(object):
         self._out = output
         self._key = None
 
-    def __nonzero__(self):
+    def __bool__(self):
         return self.otype == self.output_type
+
+    __nonzero__ = __bool__
 
     def __eq__(self, other):
         if type(other) is type(self):
@@ -673,7 +702,8 @@ class TypedOutput(object):
         Parameters
         ----------
         s : str
-            string to be sanitized, i.e. remove UUIDs, Hex-addresses, unnecessary newlines
+            string to be sanitized, i.e. remove UUIDs, Hex-addresses,
+            unnecessary newlines
         """
         if not isinstance(s, basestring):
             return s
@@ -693,7 +723,8 @@ class TypedOutput(object):
 
     @staticmethod
     def run_ndiff(original, testing):
-        return list(difflib.ndiff(original.splitlines(1), testing.splitlines(1)))
+        return list(
+            difflib.ndiff(original.splitlines(1), testing.splitlines(1)))
 
 
 class StdOutOutput(TypedOutput):
@@ -701,15 +732,20 @@ class StdOutOutput(TypedOutput):
     name = 'stdout'
     mime = 'text/plain'
 
-    def __nonzero__(self):
-        return super(StdOutOutput, self).__nonzero__() and \
+    def __bool__(self):
+        print(super(StdOutOutput, self).__bool__())
+        return super(StdOutOutput, self).__bool__() and \
             self._out['name'] == self.name
+
+    __nonzero__ = __bool__
 
     def _cmp_key(self):
         return self.sanitize(self.text)
 
     @property
     def text(self):
+        print(self._out.keys())
+        print(self._out)
         return self._out['text']
 
 
@@ -726,9 +762,11 @@ class MimeBundleOutput(TypedOutput):
     def data(self):
         return self._out[self.name]
 
-    def __nonzero__(self):
-        return super(MimeBundleOutput, self).__nonzero__() and \
+    def __bool__(self):
+        return super(MimeBundleOutput, self).__bool__() and \
             self.mime in self.data
+
+    __nonzero__ = __bool__
 
     def _cmp_key(self):
         return self.data[self.mime]
@@ -737,7 +775,8 @@ class MimeBundleOutput(TypedOutput):
 class ImageOutput(MimeBundleOutput):
     def compare_str(self, other):
         return ['>>> diff in %s' % str(self)] + \
-               ['size new : %d vs size old : %d )' % (len(self.key), len(other.key))]
+               ['size new : %d vs size old : %d )' % (
+                   len(self.key), len(other.key))]
 
 
 class PNGOutput(ImageOutput):
@@ -802,7 +841,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Run all cells in an ipython notebook as a test and ' +
                     'check whether these successfully execute and ' +
-                    'compares their output to the one inside the notebook')
+                    'compares their output to the one inside the notebook. \n\n'
+                    'A word of caution when using it to test for Python 2 / 3. '
+                    'The code here is tested for Python 2.7 / 3.4 / 3.5. When '
+                    'you want to test a specific version for your notebook '
+                    'you need to make sure that you are the same python '
+                    'version as you want tested for the notebook. This test '
+                    'cannot invoke another python version or use an existing '
+                    'environment. Notebooks are rarely written  Py 2/3 '
+                    'compatible though.')
 
     parser.add_argument(
         'file',
@@ -931,14 +978,15 @@ if __name__ == '__main__':
         extra_arguments = ['--pylab=inline'] + extra_arguments
 
     used_output_filter = [t_name.strip() for t_name in args.ttypes.split(',')]
-    used_output_types = filter(lambda x: any(f in x for f in used_output_filter), registered_output_types)
+    used_output_types = filter(
+        lambda x: any(f in x for f in used_output_filter),
+        registered_output_types)
 
     if verbose:
         tv.write(tv.blue('>>> using the following content types to compare\n'))
         for tt in used_output_types:
             tv.write(tt + '\n', indent=4)
-
-    with open(ipynb) as f:
+    with open(ipynb, encoding='utf-8') as f:
         nb = nbformat.reads(f.read(), 4)
         # Convert all notebooks to the format IPython 3.0.0 uses to
         # simplify comparison
@@ -1098,7 +1146,7 @@ if __name__ == '__main__':
 
                 for out in ex_cell_outputs:
                     if out.output_type == 'error':
-                        # An python error occurred. Cell is not completed correctly
+                        # An error occurred. Cell is not completed correctly
                         if 'ignore' not in nb_cell_commands:
                             tv.write_result('error')
                         else:
@@ -1128,11 +1176,15 @@ if __name__ == '__main__':
                 err_str = ''
 
                 if verbose or 'verbose' in nb_cell_commands:
-                    text_cells = get_outs(ex_cell_outputs, ['stream.stdout.text/plain', 'execute_result.data.text/plain'])
+                    text_cells = get_outs(
+                        ex_cell_outputs,
+                        ['stream.stdout.text/plain', 'execute_result.data.text/plain'])
                     for text_cell in text_cells:
                         out_str += text_cell.text.strip() + '\n'
 
-                    text_cells = get_outs(ex_cell_outputs, ['stream.stderr.text/plain'])
+                    text_cells = get_outs(
+                        ex_cell_outputs,
+                        ['stream.stderr.text/plain'])
                     for text_cell in text_cells:
                         err_str += text_cell.text.strip() + '\n'
 

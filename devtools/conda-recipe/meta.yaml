@@ -1,6 +1,6 @@
 package:
   name: ipynbtest
-  version: "0.2.0"
+  version: "0.2.1"
 
 build:
   preserve_egg_dir: True
@@ -26,8 +26,8 @@ requirements:
 test:
   requires:
     - matplotlib
-  files:
-    - ../../examples/ipynbtest_tutorial.ipynb
+  source_files:
+    - ipynbtest/examples
 
 about:
   home: https://github.com/jhprinz/ipynb-test
