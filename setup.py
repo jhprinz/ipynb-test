@@ -3,14 +3,14 @@ The ipynb package contains a script to test ipython notebooks
 similar to testing python code using nosetests.
 
 """
-#from distutils.sysconfig import get_config_var
-from distutils.core import setup, Extension
-from setuptools import setup, Extension
+
+# from distutils.core import setup
+from setuptools import setup
 import os
 import subprocess
 
 ##########################
-VERSION = "0.1.5"
+VERSION = "0.2.1"
 ISRELEASED = False
 __version__ = VERSION
 ##########################
@@ -18,6 +18,7 @@ __version__ = VERSION
 ################################################################################
 # Writing version control information to the module
 ################################################################################
+
 
 def git_version():
     # Return the git revision as a string
@@ -88,7 +89,7 @@ write_version_py()
 def buildKeywordDictionary():
     setupKeywords = {}
     setupKeywords["name"]              = "ipynbtest"
-    setupKeywords["version"]           = "0.2.0"
+    setupKeywords["version"]           = "0.2.1"
     setupKeywords["author"]            = "Jan-Hendrik Prinz"
     setupKeywords["author_email"]      = "jan.prinz@choderalab.org"
     setupKeywords["license"]           = "GPL 2.0"
@@ -96,7 +97,7 @@ def buildKeywordDictionary():
     setupKeywords["download_url"]      = "http://github.com/jhprinz/ipynb-test"
     setupKeywords["packages"]          = ['ipynbtest']
     setupKeywords["package_dir"]       = {
-        'ipynbtest' : 'ipynbtest',
+        'ipynbtest': 'ipynbtest',
     }
     setupKeywords["scripts"]           = ['ipynbtest/ipynbtest.py']
     setupKeywords["data_files"]        = []
@@ -111,13 +112,12 @@ def buildKeywordDictionary():
     outputString=""
     firstTab     = 40
     secondTab    = 60
-    for key in sorted( setupKeywords.iterkeys() ):
+    for key in sorted(setupKeywords):
          value         = setupKeywords[key]
          outputString += key.rjust(firstTab) + str( value ).rjust(secondTab) + "\n"
     
     print("%s" % outputString)
 
-    #get_config_var(None)  # this line is necessary to fix the imports Mac OS X
     return setupKeywords
     
 
