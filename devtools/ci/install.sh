@@ -7,6 +7,7 @@ echo travis_fold:start:install.conda
 echo Install conda
 
 MINICONDA=Miniconda2-latest-Linux-x86_64.sh
+MINICONDA=Miniconda2-4.2.12-Linux-x86_64.sh
 MINICONDA_MD5=$(curl -s https://repo.continuum.io/miniconda/ | grep -A3 $MINICONDA | sed -n '4p' | sed -n 's/ *<td>\(.*\)<\/td> */\1/p')
 wget https://repo.continuum.io/miniconda/$MINICONDA
 if [[ $MINICONDA_MD5 != $(md5sum $MINICONDA | cut -d ' ' -f 1) ]]; then
