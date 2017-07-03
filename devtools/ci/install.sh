@@ -22,4 +22,3 @@ export PATH=$HOME/miniconda2/bin:$PATH
 
 conda config --add channels http://conda.anaconda.org/omnia
 conda update --yes conda
-source activate $python
