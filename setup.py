@@ -3,6 +3,7 @@ The ipynb package contains a script to test ipython notebooks
 similar to testing python code using nosetests.
 
 """
+
 # from distutils.core import setup
 from setuptools import setup
 import os
@@ -17,6 +18,7 @@ __version__ = VERSION
 ################################################################################
 # Writing version control information to the module
 ################################################################################
+
 
 def git_version():
     # Return the git revision as a string
@@ -87,36 +89,39 @@ write_version_py()
 def buildKeywordDictionary():
     setupKeywords = {}
     setupKeywords["name"]              = "ipynbtest"
-    setupKeywords["version"]           = "0.2.0"
+    setupKeywords["version"]           = "0.2.1"
     setupKeywords["author"]            = "Jan-Hendrik Prinz"
     setupKeywords["author_email"]      = "jan.prinz@choderalab.org"
-    setupKeywords["license"]           = "GPL 2.0"
+    setupKeywords["license"]           = "LGPLv2+"
     setupKeywords["url"]               = "http://github.com/jhprinz/ipynb-test"
     setupKeywords["download_url"]      = "http://github.com/jhprinz/ipynb-test"
     setupKeywords["packages"]          = ['ipynbtest']
     setupKeywords["package_dir"]       = {
-        'ipynbtest' : 'ipynbtest',
+        'ipynbtest': 'ipynbtest',
     }
     setupKeywords["scripts"]           = ['ipynbtest/ipynbtest.py']
-    setupKeywords["data_files"]        = ['examples/ipynbtest_tutorial.ipynb']
+    setupKeywords["package_data"]      = {
+        'ipynbtest': ['ipynbtest/examples/ipynbtest_tutorial.ipynb']
+    }
+    setupKeywords['include_package_data'] = True
+    setupKeywords["data_files"]        = []
     setupKeywords["ext_modules"]       = []
     setupKeywords["platforms"]         = ["Linux", "Mac OS X", "Windows"]
     setupKeywords["description"]       = "Python script to test IPython notebooks."
     setupKeywords["requires"]          = []
     setupKeywords["long_description"]  = """
-    ipynb-test (http://github.com/jhprinz/ipynb-test) is a python script to test ipython notebooks (.ipynb) files.
+    ipynbtest (http://github.com/jhprinz/ipynb-test) is a python script to test ipython notebooks (.ipynb) files.
     It has additional support for integration in travis.
     """
     outputString=""
     firstTab     = 40
     secondTab    = 60
-    for key in sorted(setupKeywords.keys()):
+    for key in sorted(setupKeywords):
          value         = setupKeywords[key]
          outputString += key.rjust(firstTab) + str( value ).rjust(secondTab) + "\n"
     
     print("%s" % outputString)
 
-    #get_config_var(None)  # this line is necessary to fix the imports Mac OS X
     return setupKeywords
     
 
