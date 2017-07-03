@@ -3,14 +3,13 @@ The ipynb package contains a script to test ipython notebooks
 similar to testing python code using nosetests.
 
 """
-#from distutils.sysconfig import get_config_var
-from distutils.core import setup, Extension
-from setuptools import setup, Extension
+# from distutils.core import setup
+from setuptools import setup
 import os
 import subprocess
 
 ##########################
-VERSION = "0.1.5"
+VERSION = "0.2.1"
 ISRELEASED = False
 __version__ = VERSION
 ##########################
@@ -99,7 +98,7 @@ def buildKeywordDictionary():
         'ipynbtest' : 'ipynbtest',
     }
     setupKeywords["scripts"]           = ['ipynbtest/ipynbtest.py']
-    setupKeywords["data_files"]        = []
+    setupKeywords["data_files"]        = ['examples/ipynbtest_tutorial.ipynb']
     setupKeywords["ext_modules"]       = []
     setupKeywords["platforms"]         = ["Linux", "Mac OS X", "Windows"]
     setupKeywords["description"]       = "Python script to test IPython notebooks."
