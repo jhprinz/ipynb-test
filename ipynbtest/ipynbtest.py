@@ -687,7 +687,7 @@ class TypedOutput(object):
         s = re.sub(r'0x[a-f0-9]+', '0xFFFFFFFF', s)
 
         # normalize UUIDs:
-        s = re.sub(r'[a-f0-9]{8}(\-[a-f0-9]{4}){3}\-[a-f0-9]{12}', 'U-U-I-D', s)
+        s = re.sub(r'[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}', 'U-U-I-D', s)
 
         return s
 
