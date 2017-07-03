@@ -116,22 +116,27 @@ import uuid
 import difflib
 import time
 
-from Queue import Empty
+
+# Python 2 and 3 compatibility
+try:
+    from queue import Empty  # Py 3
+except ImportError:
+    from Queue import Empty  # Py 2
+
+try:
+  basestring
+except NameError:
+  basestring = str
 
 try:
     # IPython 4.0.0+ / Jupyter - the big split
     from jupyter_client.manager import KernelManager
     import nbformat
 
-# print 'Found Jupyter / IPython 4+'
-
 except ImportError:
     # IPython 3.0.0+
     from IPython.kernel.manager import KernelManager
     import IPython.nbformat as nbformat
-
-
-# print 'Using IPython 3+'
 
 
 class TravisConsole(object):
@@ -626,6 +631,9 @@ class TypedOutput(object):
     def __nonzero__(self):
         return self.otype == self.output_type
 
+    def __bool__(self):
+        return self.__nonzero__()
+
     def __eq__(self, other):
         if type(other) is type(self):
             return self.key == other.key
@@ -661,7 +669,7 @@ class TypedOutput(object):
 
     @property
     def identifier(self):
-        return '%s.%s.%s' % (self.output_type, self.name, self.mime)
+        return str('%s.%s.%s') % (self.output_type, self.name, self.mime)
 
     @staticmethod
     def sanitize(s):
@@ -784,9 +792,11 @@ used_output_types = ['stdout.text/plain', 'data.text/plain']
 
 def get_outs(cell_outputs, output_types):
     outs = []
+
     for output in cell_outputs:
         for tt_class in output_types:
-            tt = registered_output_types[tt_class](output)
+            tt = registered_output_types[tt_class]
+            tt = tt(output)
             if tt:
                 outs.append(tt)
 
