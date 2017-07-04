@@ -650,7 +650,7 @@ class TypedOutput(object):
         self._out = output
         self._key = None
 
-    def __bool__(self):
+    def __nonzero__(self):
         return self.otype == self.output_type
 
     def __bool__(self):
