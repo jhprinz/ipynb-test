@@ -1,3 +1,8 @@
+[![Travis](https://img.shields.io/travis/jhprinz/ipynb-test.svg?style=flat-square)]()
+[![Anaconda-Server Badge](https://anaconda.org/omnia/ipynbtest/badges/version.svg)](https://anaconda.org/omnia/ipynbtest)
+[![Anaconda-Server Badge](https://anaconda.org/omnia/ipynbtest/badges/downloads.svg)](https://anaconda.org/omnia/ipynbtest)
+[![Anaconda-Server Badge](https://anaconda.org/omnia/ipynbtest/badges/installer/conda.svg)](https://conda.anaconda.org/omnia)
+
 # ipynb-test
 
 A simple tool for testing ipython notebooks (.ipynb) files
@@ -131,5 +136,5 @@ The option
 
 will cause to restart the whole notebook in a fresh kernel, if a cell executed with `fail`. Here fail means whatever you declared to be a `fail`. In `strict` mode also a difference in output will cause a restart.
 
-Also here. Be careful using this option. It is again usually a sign of poor example design should it be possible to fail, if there is no error, but some rando results involved that are not what is "hoped" for and thus cause a fail.
+Be careful using this option. It is again usually a sign of poor example design should it be possible to fail, if there is no error, but some random results involved that are not what is "hoped" for and thus cause a fail.
 Make sure that given the correct conditions (previous cells, etc...) a cell passes.
