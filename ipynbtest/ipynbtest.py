@@ -650,10 +650,11 @@ class TypedOutput(object):
         self._out = output
         self._key = None
 
-    def __bool__(self):
+    def __nonzero__(self):
         return self.otype == self.output_type
 
-    __nonzero__ = __bool__
+    def __bool__(self):
+        return self.__nonzero__()
 
     def __eq__(self, other):
         if type(other) is type(self):
@@ -717,7 +718,7 @@ class TypedOutput(object):
         s = re.sub(r'0x[a-f0-9]+', '0xFFFFFFFF', s)
 
         # normalize UUIDs:
-        s = re.sub(r'[a-f0-9]{8}(\-[a-f0-9]{4}){3}\-[a-f0-9]{12}', 'U-U-I-D', s)
+        s = re.sub(r'[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}', 'U-U-I-D', s)
 
         return s
 
@@ -732,20 +733,15 @@ class StdOutOutput(TypedOutput):
     name = 'stdout'
     mime = 'text/plain'
 
-    def __bool__(self):
-        print(super(StdOutOutput, self).__bool__())
-        return super(StdOutOutput, self).__bool__() and \
+    def __nonzero__(self):
+        return super(StdOutOutput, self).__nonzero__() and \
             self._out['name'] == self.name
-
-    __nonzero__ = __bool__
 
     def _cmp_key(self):
         return self.sanitize(self.text)
 
     @property
     def text(self):
-        print(self._out.keys())
-        print(self._out)
         return self._out['text']
 
 
@@ -762,11 +758,9 @@ class MimeBundleOutput(TypedOutput):
     def data(self):
         return self._out[self.name]
 
-    def __bool__(self):
-        return super(MimeBundleOutput, self).__bool__() and \
+    def __nonzero__(self):
+        return super(MimeBundleOutput, self).__nonzero__() and \
             self.mime in self.data
-
-    __nonzero__ = __bool__
 
     def _cmp_key(self):
         return self.data[self.mime]
@@ -823,6 +817,7 @@ used_output_types = ['stdout.text/plain', 'data.text/plain']
 
 def get_outs(cell_outputs, output_types):
     outs = []
+
     for output in cell_outputs:
         for tt_class in output_types:
             tt = registered_output_types[tt_class](output)
